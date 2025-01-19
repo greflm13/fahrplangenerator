@@ -4,14 +4,28 @@ import argparse
 import tempfile
 
 import survey
-from PIL import Image, ImageDraw, ImageFont
 from rich_argparse import RichHelpFormatter
 from pyjarowinkler import distance
+from pypdf import PdfReader, PdfWriter
 
-Image.MAX_IMAGE_PIXELS = 933120000
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+from reportlab.lib import colors, pagesizes
 
-header = ImageFont.truetype("Montserrat-Black.otf", 480)
-hour = ImageFont.truetype("Montserrat-Bold.otf", 170)
+
+pdfmetrics.registerFont(TTFont("header", "Montserrat-Black.ttf"))
+pdfmetrics.registerFont(TTFont("hour", "Montserrat-Bold.ttf"))
+
+
+def create_merged_pdf(pages: list, path: str):
+    output = PdfWriter()
+
+    for page in pages:
+        pdf = PdfReader(page)
+        output.add_page(pdf.pages[0])
+
+    output.write(path)
 
 
 def slg(l: list, i: int):
@@ -73,86 +87,125 @@ def merge_similar(inputList):
 
 
 def create_page(line: str, dest: str, imgpath: str, montimes: dict, sattimes: dict, suntimes: dict, color: str):
-    img = Image.open(imgpath)
-    draw = ImageDraw.Draw(img)
+    pagesize = pagesizes.landscape(pagesizes.A4)
+    pdf = canvas.Canvas(imgpath, pagesize=pagesize)
+    pdf.scale(pagesize[0] / 1188, pagesize[1] / 840)
+    accent = colors.HexColor(color)
 
-    box = draw.textbbox((0, 0), f"{line} - {dest}", font=header)
-    draw.text((11880 / 2 - box[2] / 2, 397), f"{line} - {dest}", font=header, fill=color)
+    # Header
+    pdf.setFont("header", 48)
+    pdf.setFillColor(accent)
+    pdf.drawCentredString(x=1188 / 2, y=760, text=f"{line} - {dest}")
 
-    starty = 1270
+    starty = 690
 
     if len(montimes) > 0:
-        draw.rectangle([(797, starty), (797 + 10136, starty + 296)], fill=color, outline=(0, 0, 0), width=12)
-        draw.text((945, starty + 40), f"Montag - Freitag", font=hour, fill=(255, 255, 255))
-        spacing = 8350 / len(montimes.keys())
-        posx = 2300
+        # Color Rectangle
+        pdf.setFillColor(accent)
+        pdf.setStrokeColor(colors.black)
+        pdf.setLineWidth(1.2)
+        pdf.rect(x=80, y=starty, width=1028, height=30, fill=1)
+
+        # Hours Text
+        pdf.setFont("hour", 17)
+        pdf.setFillColor(colors.white)
+        pdf.drawCentredString(x=165, y=starty + 8.5, text="Montag - Freitag")
+        spacing = 858 / len(montimes.keys())
+        posx = 250 - spacing / 2
         times = 0
         for k, v in montimes.items():
             posx += spacing
-            draw.text((posx, starty + 40), k[1:], font=hour, align="center", fill=(255, 255, 255))
+            pdf.setFillColor(colors.white)
+            pdf.drawCentredString(x=posx, y=starty + 8.5, text=k[1:])
             space = 0
             times = max(times, len(v))
             for time in v:
-                draw.text((posx, starty + 330 + space), time["time"][3:], font=hour, align="center", fill=(0, 0, 0))
-                space += 250
-        posx = 2300
-        draw.rectangle([(2560, starty), (2560 + 12, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
-        draw.rectangle([(797, starty), (797 + 12, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
-        draw.rectangle([(797, starty + 334 + times * 250), (797 + 10136, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
+                # Minutes Text
+                pdf.setFillColor(colors.black)
+                pdf.drawCentredString(x=posx, y=starty - 20 + space, text=time["time"][3:])
+                space -= 25
+        posx = 250
+        # Lines
+        pdf.line(x1=80, y1=starty + 30, x2=80, y2=starty - times * 25 - 3.5)
+        pdf.line(x1=250, y1=starty + 30, x2=250, y2=starty - times * 25 - 3.5)
+        pdf.line(x1=80, y1=starty - times * 25 - 3.5, x2=1108, y2=starty - times * 25 - 3.5)
         for k in montimes.keys():
             posx += spacing
-            draw.rectangle([(posx + 272, starty), (posx + 284, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
+            pdf.line(x1=posx, y1=starty + 30, x2=posx, y2=starty - times * 25 - 3.5)
 
-        starty += 600 + times * 250
+        starty -= 60 + times * 25
 
     if len(sattimes) > 0:
-        draw.rectangle([(797, starty), (797 + 10136, starty + 296)], fill=color, outline=(0, 0, 0), width=12)
-        draw.text((1245, starty + 40), f"Samstag", font=hour, fill=(255, 255, 255))
-        spacing = 8350 / len(sattimes.keys())
-        posx = 2300
+        # Color Rectangle
+        pdf.setFillColor(accent)
+        pdf.setStrokeColor(colors.black)
+        pdf.setLineWidth(1.2)
+        pdf.rect(x=80, y=starty, width=1028, height=30, fill=1)
+
+        # Hours Text
+        pdf.setFont("hour", 17)
+        pdf.setFillColor(colors.white)
+        pdf.drawCentredString(x=165, y=starty + 8.5, text="Samstag")
+        spacing = 858 / len(sattimes.keys())
+        posx = 250 - spacing / 2
         times = 0
         for k, v in sattimes.items():
             posx += spacing
-            draw.text((posx, starty + 40), k[1:], font=hour, align="center", fill=(255, 255, 255))
+            pdf.setFillColor(colors.white)
+            pdf.drawCentredString(x=posx, y=starty + 8.5, text=k[1:])
             space = 0
             times = max(times, len(v))
             for time in v:
-                draw.text((posx, starty + 330 + space), time["time"][3:], font=hour, align="center", fill=(0, 0, 0))
-                space += 250
-        posx = 2300
-        draw.rectangle([(2560, starty), (2560 + 12, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
-        draw.rectangle([(797, starty), (797 + 12, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
-        draw.rectangle([(797, starty + 334 + times * 250), (797 + 10136, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
+                # Minutes Text
+                pdf.setFillColor(colors.black)
+                pdf.drawCentredString(x=posx, y=starty - 20 + space, text=time["time"][3:])
+                space -= 25
+        posx = 250
+        # Lines
+        pdf.line(x1=80, y1=starty + 30, x2=80, y2=starty - times * 25 - 3.5)
+        pdf.line(x1=250, y1=starty + 30, x2=250, y2=starty - times * 25 - 3.5)
+        pdf.line(x1=80, y1=starty - times * 25 - 3.5, x2=1108, y2=starty - times * 25 - 3.5)
         for k in sattimes.keys():
             posx += spacing
-            draw.rectangle([(posx + 272, starty), (posx + 284, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
+            pdf.line(x1=posx, y1=starty + 30, x2=posx, y2=starty - times * 25 - 3.5)
 
-        starty += 600 + times * 250
+        starty -= 60 + times * 25
 
     if len(suntimes) > 0:
-        draw.rectangle([(797, starty), (797 + 10136, starty + 296)], fill=color, outline=(0, 0, 0), width=12)
-        draw.text((1245, starty + 40), f"Sonntag", font=hour, fill=(255, 255, 255))
-        spacing = 8350 / len(suntimes.keys())
-        posx = 2300
+        # Color Rectangle
+        pdf.setFillColor(accent)
+        pdf.setStrokeColor(colors.black)
+        pdf.setLineWidth(1.2)
+        pdf.rect(x=80, y=starty, width=1028, height=30, fill=1)
+
+        # Hours Text
+        pdf.setFont("hour", 17)
+        pdf.setFillColor(colors.white)
+        pdf.drawCentredString(x=165, y=starty + 8.5, text="Sonntag")
+        spacing = 858 / len(suntimes.keys())
+        posx = 250 - spacing / 2
         times = 0
         for k, v in suntimes.items():
             posx += spacing
-            draw.text((posx, starty + 40), k[1:], font=hour, align="center", fill=(255, 255, 255))
+            pdf.setFillColor(colors.white)
+            pdf.drawCentredString(x=posx, y=starty + 8.5, text=k[1:])
             space = 0
             times = max(times, len(v))
             for time in v:
-                draw.text((posx, starty + 330 + space), time["time"][3:], font=hour, align="center", fill=(0, 0, 0))
-                space += 250
-        posx = 2300
-        draw.rectangle([(2560, starty), (2560 + 12, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
-        draw.rectangle([(797, starty), (797 + 12, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
-        draw.rectangle([(797, starty + 334 + times * 250), (797 + 10136, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
+                # Minutes Text
+                pdf.setFillColor(colors.black)
+                pdf.drawCentredString(x=posx, y=starty - 20 + space, text=time["time"][3:])
+                space -= 25
+        posx = 250
+        # Lines
+        pdf.line(x1=80, y1=starty + 30, x2=80, y2=starty - times * 25 - 3.5)
+        pdf.line(x1=250, y1=starty + 30, x2=250, y2=starty - times * 25 - 3.5)
+        pdf.line(x1=80, y1=starty - times * 25 - 3.5, x2=1108, y2=starty - times * 25 - 3.5)
         for k in suntimes.keys():
             posx += spacing
-            draw.rectangle([(posx + 272, starty), (posx + 284, starty + 346 + times * 250)], fill=(0, 0, 0), width=0)
+            pdf.line(x1=posx, y1=starty + 30, x2=posx, y2=starty - times * 25 - 3.5)
 
-    img.save(imgpath)
-    img.close()
+    pdf.save()
     return imgpath
 
 
@@ -300,9 +353,7 @@ def main():
                 destlist.extend([t["dest"] for t in time])
             img = sheets.get(line, {}).get(k, {})
             if img == {}:
-                img = tempfile.mkstemp(suffix=".png")[1]
-                file = Image.new("RGB", (11880, 8400), (255, 255, 255))
-                file.save(img)
+                img = tempfile.mkstemp(suffix=".pdf")[1]
             sheets[line][k] = create_page(
                 line,
                 most_frequent(destlist),
@@ -316,13 +367,9 @@ def main():
     sheetlst = []
     for line in sheets.values():
         for dire in line.values():
-            sheetlst.append(Image.open(dire))
+            sheetlst.append(dire)
 
-    first = sheetlst.pop(0)
-    pagesizepxl = first.size
-    pagesizein = (297 * 0.03937008, 210 * 0.03937008)
-    dpi = (pagesizepxl[0] / pagesizein[0], pagesizepxl[1] / pagesizein[1])
-    first.save(os.path.join(args.input, "fahrplan.pdf"), "PDF", save_all=True, append_images=sheetlst, dpi=dpi)
+    create_merged_pdf(sheetlst, "fahrplan.pdf")
 
     for line in sheets.values():
         for dire in line.values():
