@@ -28,13 +28,6 @@ def create_merged_pdf(pages: list, path: str):
     output.write(path)
 
 
-def slg(l: list, i: int):
-    try:
-        return f"{l[i]['time'][3:]}"
-    except IndexError:
-        return "  "
-
-
 def dict_set(lst: list):
     seen = []
     setlike = []
@@ -86,124 +79,85 @@ def merge_similar(inputList):
     return refinedInputList
 
 
+def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: str):
+    # Color Rectangle
+    pdf.setFillColor(accent)
+    pdf.setStrokeColor(colors.black)
+    pdf.setLineWidth(1.2)
+    pdf.rect(x=80, y=posy, width=1028, height=30, fill=1)
+
+    # Hours Text
+    pdf.setFont("hour", 17)
+    pdf.setFillColor(colors.white)
+    pdf.drawCentredString(x=165, y=posy + 8.5, text=day)
+    spacing = 858 / len(daytimes.keys())
+    posx = 250 - spacing / 2
+    times = 0
+    for k, v in daytimes.items():
+        posx += spacing
+        pdf.setFillColor(colors.white)
+        pdf.drawCentredString(x=posx, y=posy + 8.5, text=k[1:])
+        space = 0
+        times = max(times, len(v))
+        for time in v:
+            # Minutes Text
+            pdf.setFillColor(colors.black)
+            pdf.drawCentredString(x=posx, y=posy - 20 + space, text=time["time"][3:])
+            space -= 25
+    posx = 250
+
+    # Lines
+    pdf.line(x1=80, y1=posy + 30, x2=80, y2=posy - times * 25 - 3.5)
+    pdf.line(x1=250, y1=posy + 30, x2=250, y2=posy - times * 25 - 3.5)
+    pdf.line(x1=80, y1=posy - times * 25 - 3.5, x2=1108, y2=posy - times * 25 - 3.5)
+    for k in daytimes.keys():
+        posx += spacing
+        pdf.line(x1=posx, y1=posy + 30, x2=posx, y2=posy - times * 25 - 3.5)
+
+    posy -= 60 + times * 25
+    return pdf, posy
+
+
 def create_page(line: str, dest: str, imgpath: str, montimes: dict, sattimes: dict, suntimes: dict, color: str):
-    pagesize = pagesizes.landscape(pagesizes.A4)
+    limit = 0
+    times = 0
+    for i in montimes.values():
+        times = max(times, len(i))
+    limit += times
+    times = 0
+    for i in sattimes.values():
+        times = max(times, len(i))
+    limit += times
+    times = 0
+    for i in suntimes.values():
+        times = max(times, len(i))
+    limit += times
+
+    if limit > 20:
+        pagesize = pagesizes.portrait(pagesizes.A3)
+        movey = 840
+    else:
+        pagesize = pagesizes.landscape(pagesizes.A4)
+        movey = 0
     pdf = canvas.Canvas(imgpath, pagesize=pagesize)
-    pdf.scale(pagesize[0] / 1188, pagesize[1] / 840)
+    pdf.scale(pagesize[0] / 1188, pagesize[1] / (840 + movey))
     accent = colors.HexColor(color)
 
     # Header
     pdf.setFont("header", 48)
     pdf.setFillColor(accent)
-    pdf.drawCentredString(x=1188 / 2, y=760, text=f"{line} - {dest}")
+    pdf.drawCentredString(x=1188 / 2, y=760 + movey, text=f"{line} - {dest}")
 
-    starty = 690
+    posy = 690 + movey
 
     if len(montimes) > 0:
-        # Color Rectangle
-        pdf.setFillColor(accent)
-        pdf.setStrokeColor(colors.black)
-        pdf.setLineWidth(1.2)
-        pdf.rect(x=80, y=starty, width=1028, height=30, fill=1)
-
-        # Hours Text
-        pdf.setFont("hour", 17)
-        pdf.setFillColor(colors.white)
-        pdf.drawCentredString(x=165, y=starty + 8.5, text="Montag - Freitag")
-        spacing = 858 / len(montimes.keys())
-        posx = 250 - spacing / 2
-        times = 0
-        for k, v in montimes.items():
-            posx += spacing
-            pdf.setFillColor(colors.white)
-            pdf.drawCentredString(x=posx, y=starty + 8.5, text=k[1:])
-            space = 0
-            times = max(times, len(v))
-            for time in v:
-                # Minutes Text
-                pdf.setFillColor(colors.black)
-                pdf.drawCentredString(x=posx, y=starty - 20 + space, text=time["time"][3:])
-                space -= 25
-        posx = 250
-        # Lines
-        pdf.line(x1=80, y1=starty + 30, x2=80, y2=starty - times * 25 - 3.5)
-        pdf.line(x1=250, y1=starty + 30, x2=250, y2=starty - times * 25 - 3.5)
-        pdf.line(x1=80, y1=starty - times * 25 - 3.5, x2=1108, y2=starty - times * 25 - 3.5)
-        for k in montimes.keys():
-            posx += spacing
-            pdf.line(x1=posx, y1=starty + 30, x2=posx, y2=starty - times * 25 - 3.5)
-
-        starty -= 60 + times * 25
+        pdf, posy = addtimes(pdf, montimes, "Montag-Freitag", posy, accent)
 
     if len(sattimes) > 0:
-        # Color Rectangle
-        pdf.setFillColor(accent)
-        pdf.setStrokeColor(colors.black)
-        pdf.setLineWidth(1.2)
-        pdf.rect(x=80, y=starty, width=1028, height=30, fill=1)
-
-        # Hours Text
-        pdf.setFont("hour", 17)
-        pdf.setFillColor(colors.white)
-        pdf.drawCentredString(x=165, y=starty + 8.5, text="Samstag")
-        spacing = 858 / len(sattimes.keys())
-        posx = 250 - spacing / 2
-        times = 0
-        for k, v in sattimes.items():
-            posx += spacing
-            pdf.setFillColor(colors.white)
-            pdf.drawCentredString(x=posx, y=starty + 8.5, text=k[1:])
-            space = 0
-            times = max(times, len(v))
-            for time in v:
-                # Minutes Text
-                pdf.setFillColor(colors.black)
-                pdf.drawCentredString(x=posx, y=starty - 20 + space, text=time["time"][3:])
-                space -= 25
-        posx = 250
-        # Lines
-        pdf.line(x1=80, y1=starty + 30, x2=80, y2=starty - times * 25 - 3.5)
-        pdf.line(x1=250, y1=starty + 30, x2=250, y2=starty - times * 25 - 3.5)
-        pdf.line(x1=80, y1=starty - times * 25 - 3.5, x2=1108, y2=starty - times * 25 - 3.5)
-        for k in sattimes.keys():
-            posx += spacing
-            pdf.line(x1=posx, y1=starty + 30, x2=posx, y2=starty - times * 25 - 3.5)
-
-        starty -= 60 + times * 25
+        pdf, posy = addtimes(pdf, sattimes, "Samstag", posy, accent)
 
     if len(suntimes) > 0:
-        # Color Rectangle
-        pdf.setFillColor(accent)
-        pdf.setStrokeColor(colors.black)
-        pdf.setLineWidth(1.2)
-        pdf.rect(x=80, y=starty, width=1028, height=30, fill=1)
-
-        # Hours Text
-        pdf.setFont("hour", 17)
-        pdf.setFillColor(colors.white)
-        pdf.drawCentredString(x=165, y=starty + 8.5, text="Sonntag")
-        spacing = 858 / len(suntimes.keys())
-        posx = 250 - spacing / 2
-        times = 0
-        for k, v in suntimes.items():
-            posx += spacing
-            pdf.setFillColor(colors.white)
-            pdf.drawCentredString(x=posx, y=starty + 8.5, text=k[1:])
-            space = 0
-            times = max(times, len(v))
-            for time in v:
-                # Minutes Text
-                pdf.setFillColor(colors.black)
-                pdf.drawCentredString(x=posx, y=starty - 20 + space, text=time["time"][3:])
-                space -= 25
-        posx = 250
-        # Lines
-        pdf.line(x1=80, y1=starty + 30, x2=80, y2=starty - times * 25 - 3.5)
-        pdf.line(x1=250, y1=starty + 30, x2=250, y2=starty - times * 25 - 3.5)
-        pdf.line(x1=80, y1=starty - times * 25 - 3.5, x2=1108, y2=starty - times * 25 - 3.5)
-        for k in suntimes.keys():
-            posx += spacing
-            pdf.line(x1=posx, y1=starty + 30, x2=posx, y2=starty - times * 25 - 3.5)
+        pdf, posy = addtimes(pdf, suntimes, "Sonntag", posy, accent)
 
     pdf.save()
     return imgpath
