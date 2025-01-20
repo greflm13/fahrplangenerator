@@ -134,7 +134,7 @@ def create_page(line: str, dest: str, imgpath: str, montimes: dict, sattimes: di
     limit += times
 
     if limit > 20:
-        pagesize = pagesizes.portrait(pagesizes.A3)
+        pagesize = pagesizes.portrait(pagesizes.A4)
         movey = 840
     else:
         pagesize = pagesizes.landscape(pagesizes.A4)
