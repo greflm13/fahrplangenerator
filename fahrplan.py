@@ -165,25 +165,28 @@ def create_page(line: str, dest: str, imgpath: str, montimes: dict, sattimes: di
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=RichHelpFormatter)
-    parser.add_argument("-i", "--input", help="Input folder", type=str, required=True, dest="input")
+    parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", required=True, dest="input")
     parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="#3f3f3f")
     parser.add_argument("-s", "--stop", help="Stop to generate timetable for", type=str, required=False, dest="stop", default="")
     args = parser.parse_args()
 
-    with open(os.path.join(args.input, "stops.txt"), mode="r", encoding="utf-8-sig") as f:
-        stops = [dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)]
+    stops, stop_times, trips, calendar, routes = [], [], [], [], []
 
-    with open(os.path.join(args.input, "stop_times.txt"), mode="r", encoding="utf-8-sig") as f:
-        stop_times = [dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)]
+    for folder in args.input:
+        with open(os.path.join(folder, "stops.txt"), mode="r", encoding="utf-8-sig") as f:
+            stops.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
-    with open(os.path.join(args.input, "trips.txt"), mode="r", encoding="utf-8-sig") as f:
-        trips = [dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)]
+        with open(os.path.join(folder, "stop_times.txt"), mode="r", encoding="utf-8-sig") as f:
+            stop_times.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
-    with open(os.path.join(args.input, "calendar.txt"), mode="r", encoding="utf-8-sig") as f:
-        calendar = [dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)]
+        with open(os.path.join(folder, "trips.txt"), mode="r", encoding="utf-8-sig") as f:
+            trips.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
-    with open(os.path.join(args.input, "routes.txt"), mode="r", encoding="utf-8-sig") as f:
-        routes = [dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)]
+        with open(os.path.join(folder, "calendar.txt"), mode="r", encoding="utf-8-sig") as f:
+            calendar.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+
+        with open(os.path.join(folder, "routes.txt"), mode="r", encoding="utf-8-sig") as f:
+            routes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
     if args.stop == "":
         choices = merge_similar(sorted({stop["stop_name"] for stop in stops}))
