@@ -110,7 +110,7 @@ def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: 
     pdf.line(x1=80, y1=posy + 30, x2=80, y2=posy - times * 25 - 3.5)
     pdf.line(x1=250, y1=posy + 30, x2=250, y2=posy - times * 25 - 3.5)
     pdf.line(x1=80, y1=posy - times * 25 - 3.5, x2=1108, y2=posy - times * 25 - 3.5)
-    for k in daytimes.keys():
+    for _ in daytimes.keys():
         posx += spacing
         pdf.line(x1=posx, y1=posy + 30, x2=posx, y2=posy - times * 25 - 3.5)
 
