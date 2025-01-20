@@ -173,20 +173,21 @@ def main():
     stops, stop_times, trips, calendar, routes = [], [], [], [], []
 
     for folder in args.input:
-        with open(os.path.join(folder, "stops.txt"), mode="r", encoding="utf-8-sig") as f:
-            stops.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+        if os.path.isdir(folder):
+            with open(os.path.join(folder, "stops.txt"), mode="r", encoding="utf-8-sig") as f:
+                stops.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
-        with open(os.path.join(folder, "stop_times.txt"), mode="r", encoding="utf-8-sig") as f:
-            stop_times.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+            with open(os.path.join(folder, "stop_times.txt"), mode="r", encoding="utf-8-sig") as f:
+                stop_times.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
-        with open(os.path.join(folder, "trips.txt"), mode="r", encoding="utf-8-sig") as f:
-            trips.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+            with open(os.path.join(folder, "trips.txt"), mode="r", encoding="utf-8-sig") as f:
+                trips.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
-        with open(os.path.join(folder, "calendar.txt"), mode="r", encoding="utf-8-sig") as f:
-            calendar.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+            with open(os.path.join(folder, "calendar.txt"), mode="r", encoding="utf-8-sig") as f:
+                calendar.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
-        with open(os.path.join(folder, "routes.txt"), mode="r", encoding="utf-8-sig") as f:
-            routes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+            with open(os.path.join(folder, "routes.txt"), mode="r", encoding="utf-8-sig") as f:
+                routes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
     if args.stop == "":
         choices = merge_similar(sorted({stop["stop_name"] for stop in stops}))
