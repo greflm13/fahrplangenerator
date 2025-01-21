@@ -4,6 +4,7 @@ import argparse
 import tempfile
 
 import survey
+import requests
 from rich_argparse import RichHelpFormatter
 from pyjarowinkler import distance
 from pypdf import PdfReader, PdfWriter
@@ -11,7 +12,9 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
+from reportlab.graphics import renderPDF
 from reportlab.lib import colors, pagesizes
+from svglib.svglib import svg2rlg
 
 
 pdfmetrics.registerFont(TTFont("header", "Montserrat-Black.ttf"))
@@ -79,6 +82,20 @@ def merge_similar(inputList):
     return refinedInputList
 
 
+def scale(drawing, scaling_factor):
+    """
+    Scale a reportlab.graphics.shapes.Drawing()
+    object while maintaining the aspect ratio
+    """
+    scaling_x = scaling_factor
+    scaling_y = scaling_factor
+
+    drawing.width = drawing.minWidth() * scaling_x
+    drawing.height = drawing.height * scaling_y
+    drawing.scale(scaling_x, scaling_y)
+    return drawing
+
+
 def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: str):
     # Color Rectangle
     pdf.setFillColor(accent)
@@ -109,7 +126,7 @@ def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: 
     # Lines
     pdf.line(x1=80, y1=posy + 30, x2=80, y2=posy - times * 25 - 3.5)
     pdf.line(x1=250, y1=posy + 30, x2=250, y2=posy - times * 25 - 3.5)
-    pdf.line(x1=80, y1=posy - times * 25 - 3.5, x2=1108, y2=posy - times * 25 - 3.5)
+    pdf.line(x1=79.4, y1=posy - times * 25 - 3.5, x2=1108.6, y2=posy - times * 25 - 3.5)
     for _ in daytimes.keys():
         posx += spacing
         pdf.line(x1=posx, y1=posy + 30, x2=posx, y2=posy - times * 25 - 3.5)
@@ -118,7 +135,7 @@ def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: 
     return pdf, posy
 
 
-def create_page(line: str, dest: str, imgpath: str, montimes: dict, sattimes: dict, suntimes: dict, color: str):
+def create_page(line: str, dest: str, path: str, montimes: dict, sattimes: dict, suntimes: dict, color: str, logo: bool = True):
     limit = 0
     times = 0
     for i in montimes.values():
@@ -139,7 +156,7 @@ def create_page(line: str, dest: str, imgpath: str, montimes: dict, sattimes: di
     else:
         pagesize = pagesizes.landscape(pagesizes.A4)
         movey = 0
-    pdf = canvas.Canvas(imgpath, pagesize=pagesize)
+    pdf = canvas.Canvas(path, pagesize=pagesize)
     pdf.scale(pagesize[0] / 1188, pagesize[1] / (840 + movey))
     accent = colors.HexColor(color)
 
@@ -159,8 +176,18 @@ def create_page(line: str, dest: str, imgpath: str, montimes: dict, sattimes: di
     if len(suntimes) > 0:
         pdf, posy = addtimes(pdf, suntimes, "Sonntag", posy, accent)
 
+    if logo:
+        res = requests.get("https://files.sorogon.eu/logo.svg")
+        tmpfile = tempfile.NamedTemporaryFile()
+        tmpfile.write(res.content)
+        tmpfile.flush()
+        drawing = svg2rlg(tmpfile.name)
+        drawing = scale(drawing, 0.5)
+        renderPDF.draw(drawing, pdf, 1041, 15)
+        tmpfile.close()
+
     pdf.save()
-    return imgpath
+    return path
 
 
 def main():
@@ -168,6 +195,7 @@ def main():
     parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", required=True, dest="input")
     parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="#3f3f3f")
     parser.add_argument("-s", "--stop", help="Stop to generate timetable for", type=str, required=False, dest="stop", default="")
+    parser.add_argument("--no-logo", action="store_false", dest="logo")
     args = parser.parse_args()
 
     stops, stop_times, trips, calendar, routes = [], [], [], [], []
@@ -298,38 +326,39 @@ def main():
                 sundict[trip["line"]][f"d{trip['dire']}"][f"t{i:02}"] = []
         sundict[trip["line"]][f"d{trip['dire']}"].setdefault(f"t{trip['time'][:2]}", []).append(trip)
 
-    sheets = {}
+    pages = {}
 
     lines = mondict | satdict | sundict
 
     for line, dires in lines.items():
-        if not sheets.get(line, False):
-            sheets[line] = {}
+        if not pages.get(line, False):
+            pages[line] = {}
         for k, dire in dires.items():
             destlist = []
             for time in dire.values():
                 destlist.extend([t["dest"] for t in time])
-            img = sheets.get(line, {}).get(k, {})
-            if img == {}:
-                img = tempfile.mkstemp(suffix=".pdf")[1]
-            sheets[line][k] = create_page(
+            page = pages.get(line, {}).get(k, {})
+            if page == {}:
+                page = tempfile.mkstemp(suffix=".pdf")[1]
+            pages[line][k] = create_page(
                 line,
                 most_frequent(destlist),
-                img,
+                page,
                 mondict.get(line, {}).get(k, {}),
                 satdict.get(line, {}).get(k, {}),
                 sundict.get(line, {}).get(k, {}),
                 args.color,
+                args.logo,
             )
 
-    sheetlst = []
-    for line in sheets.values():
+    pagelst = []
+    for line in pages.values():
         for dire in line.values():
-            sheetlst.append(dire)
+            pagelst.append(dire)
 
-    create_merged_pdf(sheetlst, "fahrplan.pdf")
+    create_merged_pdf(pagelst, "fahrplan.pdf")
 
-    for line in sheets.values():
+    for line in pages.values():
         for dire in line.values():
             os.remove(dire)
 
