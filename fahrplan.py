@@ -1,14 +1,15 @@
 import os
 import csv
 import random
+import logging
 import argparse
 import tempfile
 
 import survey
 import requests
 from rich_argparse import RichHelpFormatter
-from pyjarowinkler import distance
 from pypdf import PdfReader, PdfWriter
+from pythonjsonlogger import jsonlogger
 
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
@@ -17,10 +18,50 @@ from reportlab.graphics import renderPDF
 from reportlab.lib import colors, pagesizes
 from svglib.svglib import svg2rlg
 
+if __package__ is None:
+    PACKAGE = ""
+else:
+    PACKAGE = __package__
+SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
+LOG_DIR = os.path.join(SCRIPTDIR, "logs")
+LATEST_LOG_FILE = os.path.join(LOG_DIR, "latest.jsonl")
 
-pdfmetrics.registerFont(TTFont("header", "Montserrat-Black.ttf"))
-pdfmetrics.registerFont(TTFont("hour", "Montserrat-Bold.ttf"))
-pdfmetrics.registerFont(TTFont("foot", "Montserrat-Thin.ttf"))
+pdfmetrics.registerFont(TTFont("header", "FiraSans-Black.ttf"))
+pdfmetrics.registerFont(TTFont("hour", "FiraSans-Bold.ttf"))
+pdfmetrics.registerFont(TTFont("foot", "FiraSans-Thin.ttf"))
+
+os.makedirs(LOG_DIR, exist_ok=True)
+logger = logging.getLogger(name="consolelogger")
+keys = [
+    "asctime",
+    "created",
+    "filename",
+    "funcName",
+    "levelname",
+    "levelno",
+    "lineno",
+    "module",
+    "msecs",
+    "message",
+    "name",
+    "pathname",
+    "process",
+    "processName",
+    "relativeCreated",
+    "thread",
+    "threadName",
+    "taskName",
+]
+
+custom_format = " ".join([f"%({i})s" for i in keys])
+formatter = jsonlogger.JsonFormatter(custom_format)
+
+log_handler = logging.FileHandler(LATEST_LOG_FILE)
+log_handler.setFormatter(formatter)
+
+logger.addHandler(log_handler)
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(level=logging.INFO)
 
 
 def create_merged_pdf(pages: list, path: str):
@@ -48,40 +89,14 @@ def most_frequent(l: list):
     return max(set(l), key=l.count)
 
 
-def detect_shared_prefix(lst: list) -> tuple[bool, str]:
-    if not lst:
-        return False, ""
-
-    prefix = lst[0]
-    for item in lst[1:]:
-        if not isinstance(item, str):
-            item = item["name"]
-        while not item.startswith(prefix):
-            prefix = prefix[:-1]
-            if not prefix:
-                return False, ""
-
-    return True, prefix
-
-
-def merge_similar(inputList):
-    refinedInputList = []
-    for v in inputList:
-        if len(refinedInputList) > 0:
-            last = refinedInputList.pop()
-            if distance.get_jaro_distance(last, v, winkler=True, scaling=0.1) > 0.9:
-                pre, prefix = detect_shared_prefix([last, v])
-                if pre:
-                    refinedInputList.append(prefix)
-                else:
-                    refinedInputList.append(last)
-                    refinedInputList.append(v)
-            else:
-                refinedInputList.append(last)
-                refinedInputList.append(v)
-        elif v != "":
-            refinedInputList.append(v)
-    return refinedInputList
+def merge(l: list[str]):
+    rl = []
+    for i in l:
+        sp = i.split()
+        if len(sp[-1]) < 2:
+            sp.pop()
+        rl.append(" ".join(sp))
+    return list(set(rl))
 
 
 def scale(drawing, scaling_factor):
@@ -99,6 +114,7 @@ def scale(drawing, scaling_factor):
 
 
 def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: str):
+    logger.info(f"Add {day}")
     # Color Rectangle
     pdf.setFillColor(accent)
     pdf.setStrokeColor(colors.black)
@@ -137,7 +153,10 @@ def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: 
     return pdf, posy
 
 
-def create_page(line: str, dest: str, stop: str, path: str, montimes: dict, sattimes: dict, suntimes: dict, color: str, logo: bool = True):
+def create_page(
+    line: str, dest: str, stop: str, path: str, montimes: dict, sattimes: dict, suntimes: dict, color: str, logo: tempfile._TemporaryFileWrapper | str | None = "</srgn>"
+):
+    logger.info(f"Create page for {line} - {dest}")
     limit = 0
     times = 0
     for i in montimes.values():
@@ -178,21 +197,21 @@ def create_page(line: str, dest: str, stop: str, path: str, montimes: dict, satt
     if len(suntimes) > 0:
         pdf, posy = addtimes(pdf, suntimes, "Sonntag", posy, accent)
 
-    if logo:
-        res = requests.get("https://files.sorogon.eu/logo.svg")
-        tmpfile = tempfile.NamedTemporaryFile()
-        tmpfile.write(res.content)
-        tmpfile.flush()
-        drawing = svg2rlg(tmpfile.name)
+    if isinstance(logo, tempfile._TemporaryFileWrapper):
+        drawing = svg2rlg(logo.name)
         drawing = scale(drawing, 0.5)
         renderPDF.draw(drawing, pdf, 1041, 15)
-        tmpfile.close()
+    elif isinstance(logo, str):
+        pdf.setFont("logo", 20)
+        pdf.setFillColor(colors.black)
+        pdf.drawRightString(x=1108, y=23.5, text=logo)
 
     pdf.setFont("foot", 17)
     pdf.setFillColor(colors.black)
-    pdf.drawString(x=80, y=23.5, text=f"{stop}")
+    pdf.drawString(x=80, y=23.5, text=stop)
 
     pdf.save()
+    logger.info("Done.")
     return path
 
 
@@ -201,6 +220,7 @@ def main():
     parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", required=True, dest="input")
     parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
     parser.add_argument("-s", "--stop", help="Stop to generate timetable for", type=str, required=False, dest="stop", default="")
+    parser.add_argument("-o", "--output", help="Output file", type=str, required=False, dest="output", default="fahrplan.pdf")
     parser.add_argument("--no-logo", action="store_false", dest="logo")
     args = parser.parse_args()
 
@@ -224,17 +244,33 @@ def main():
                 routes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
     if args.stop == "":
-        choices = merge_similar(sorted({stop["stop_name"].rstrip("0123456789").strip() for stop in stops}))
+        choices = merge(sorted({stop["stop_name"] for stop in stops if stop.get("parent_station", "") == ""}))
         choice = survey.routines.select("Haltestelle/Bahnhof: ", options=choices)
         ourstop = choices[choice]
     else:
         ourstop = args.stop.strip()
 
-    ourstops = [stop for stop in stops if stop["stop_name"].startswith(ourstop)]
+    logger.info("computing our stops")
+
+    ourstops = []
+    for stop in stops:
+        sp = stop["stop_name"].split()
+        if len(sp[-1]) < 2:
+            sp.pop()
+        stopn = " ".join(sp)
+        if stopn == ourstop:
+            ourstops.append(stop)
+    ourstops.extend([stop for stop in stops if stop.get("parent_station", "") in [s["stop_id"] for s in ourstops]])
+    logger.info("computing our times")
     ourtimes = [time for time in stop_times if time["stop_id"] in [stop["stop_id"] for stop in ourstops]]
+    logger.info("computing our trips")
     ourtrips = [trip for trip in trips if trip["trip_id"] in [time["trip_id"] for time in ourtimes]]
+    logger.info("computing our services")
     ourservs = [serv for serv in calendar if serv["service_id"] in [trip["service_id"] for trip in ourtrips]]
+    logger.info("computing our routes")
     ourroute = [rout for rout in routes if rout["route_id"] in [trip["route_id"] for trip in ourtrips]]
+
+    logger.info("playing variable shuffle")
 
     if ourstops == []:
         print(f'Stop "{ourstop}" not found!')
@@ -339,6 +375,23 @@ def main():
 
     lines = mondict | satdict | sundict
 
+    if args.logo:
+        try:
+            logger.info("getting logo")
+            res = requests.get("https://files.sorogon.eu/logo.svg")
+            tmpfile = tempfile.NamedTemporaryFile()
+            tmpfile.write(res.content)
+            tmpfile.flush()
+        except requests.exceptions.ConnectionError:
+            logger.info("fallback to string logo")
+            try:
+                pdfmetrics.registerFont(TTFont("logo", "BarlowCondensed_Thin.ttf"))
+            except:
+                pdfmetrics.registerFont(TTFont("logo", "FiraSans-Thin.ttf"))
+            tmpfile = "</srgn>"
+    else:
+        tmpfile = None
+
     for line, dires in lines.items():
         if args.color == "random":
             color = "#" + "".join(random.choice("0123456789abcdef") for _ in range(6))
@@ -364,7 +417,7 @@ def main():
                 satdict.get(line, {}).get(k, {}),
                 sundict.get(line, {}).get(k, {}),
                 color,
-                args.logo,
+                tmpfile,
             )
 
     pagelst = []
@@ -372,7 +425,7 @@ def main():
         for dire in line.values():
             pagelst.append(dire)
 
-    create_merged_pdf(pagelst, "fahrplan.pdf")
+    create_merged_pdf(pagelst, args.output)
 
     for line in pages.values():
         for dire in line.values():

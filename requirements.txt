@@ -1,5 +1,5 @@
-pyjarowinkler==1.8
 pypdf==5.1.0
+python_json_logger==3.2.1
 reportlab==4.2.5
 Requests==2.32.3
 rich_argparse==1.6.0
