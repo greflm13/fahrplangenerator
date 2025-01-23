@@ -1,5 +1,6 @@
 import os
 import csv
+import random
 import argparse
 import tempfile
 
@@ -19,6 +20,7 @@ from svglib.svglib import svg2rlg
 
 pdfmetrics.registerFont(TTFont("header", "Montserrat-Black.ttf"))
 pdfmetrics.registerFont(TTFont("hour", "Montserrat-Bold.ttf"))
+pdfmetrics.registerFont(TTFont("foot", "Montserrat-Thin.ttf"))
 
 
 def create_merged_pdf(pages: list, path: str):
@@ -77,7 +79,7 @@ def merge_similar(inputList):
             else:
                 refinedInputList.append(last)
                 refinedInputList.append(v)
-        else:
+        elif v != "":
             refinedInputList.append(v)
     return refinedInputList
 
@@ -135,7 +137,7 @@ def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: 
     return pdf, posy
 
 
-def create_page(line: str, dest: str, path: str, montimes: dict, sattimes: dict, suntimes: dict, color: str, logo: bool = True):
+def create_page(line: str, dest: str, stop: str, path: str, montimes: dict, sattimes: dict, suntimes: dict, color: str, logo: bool = True):
     limit = 0
     times = 0
     for i in montimes.values():
@@ -186,6 +188,10 @@ def create_page(line: str, dest: str, path: str, montimes: dict, sattimes: dict,
         renderPDF.draw(drawing, pdf, 1041, 15)
         tmpfile.close()
 
+    pdf.setFont("foot", 17)
+    pdf.setFillColor(colors.black)
+    pdf.drawString(x=80, y=23.5, text=f"{stop}")
+
     pdf.save()
     return path
 
@@ -218,11 +224,11 @@ def main():
                 routes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
 
     if args.stop == "":
-        choices = merge_similar(sorted({stop["stop_name"] for stop in stops}))
+        choices = merge_similar(sorted({stop["stop_name"].rstrip("0123456789").strip() for stop in stops}))
         choice = survey.routines.select("Haltestelle/Bahnhof: ", options=choices)
         ourstop = choices[choice]
     else:
-        ourstop = args.stop
+        ourstop = args.stop.strip()
 
     ourstops = [stop for stop in stops if stop["stop_name"].startswith(ourstop)]
     ourtimes = [time for time in stop_times if time["stop_id"] in [stop["stop_id"] for stop in ourstops]]
@@ -267,6 +273,7 @@ def main():
                     "time": stop_times[trip["trip_id"]]["arrival_time"][:-3],
                     "line": routes[trip["route_id"]]["route_short_name"],
                     "dire": trips[trip["trip_id"]]["direction_id"],
+                    "stop": stops[stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
                 }
             )
         if calendar[trip["service_id"]]["saturday"] == "1":
@@ -276,6 +283,7 @@ def main():
                     "time": stop_times[trip["trip_id"]]["arrival_time"][:-3],
                     "line": routes[trip["route_id"]]["route_short_name"],
                     "dire": trips[trip["trip_id"]]["direction_id"],
+                    "stop": stops[stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
                 }
             )
         if calendar[trip["service_id"]]["sunday"] == "1":
@@ -285,6 +293,7 @@ def main():
                     "time": stop_times[trip["trip_id"]]["arrival_time"][:-3],
                     "line": routes[trip["route_id"]]["route_short_name"],
                     "dire": trips[trip["trip_id"]]["direction_id"],
+                    "stop": stops[stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
                 }
             )
 
@@ -331,23 +340,30 @@ def main():
     lines = mondict | satdict | sundict
 
     for line, dires in lines.items():
+        if args.color == "random":
+            color = "#" + "".join(random.choice("0123456789abcdef") for _ in range(6))
+        else:
+            color = args.color
         if not pages.get(line, False):
             pages[line] = {}
         for k, dire in dires.items():
             destlist = []
+            stoplist = []
             for time in dire.values():
                 destlist.extend([t["dest"] for t in time])
+                stoplist.extend([t["stop"] for t in time])
             page = pages.get(line, {}).get(k, {})
             if page == {}:
                 page = tempfile.mkstemp(suffix=".pdf")[1]
             pages[line][k] = create_page(
                 line,
                 most_frequent(destlist),
+                ourstop,
                 page,
                 mondict.get(line, {}).get(k, {}),
                 satdict.get(line, {}).get(k, {}),
                 sundict.get(line, {}).get(k, {}),
-                args.color,
+                color,
                 args.logo,
             )
 
