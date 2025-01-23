@@ -199,7 +199,7 @@ def create_page(line: str, dest: str, stop: str, path: str, montimes: dict, satt
 def main():
     parser = argparse.ArgumentParser(formatter_class=RichHelpFormatter)
     parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", required=True, dest="input")
-    parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="#3f3f3f")
+    parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
     parser.add_argument("-s", "--stop", help="Stop to generate timetable for", type=str, required=False, dest="stop", default="")
     parser.add_argument("--no-logo", action="store_false", dest="logo")
     args = parser.parse_args()
