@@ -136,7 +136,20 @@ def scale(drawing: Drawing, scaling_factor: float):
 def addtimes(pdf: Canvas, daytimes: dict[str, list[dict[str, str]]], day: str, posy: float, accent: str, dest: str, addstops: dict[str, int] = {"num": 1}):
     logger.info(f"Add {day}")
 
-    pre = pdf, posy, addstops.copy(), 0
+    pdg = pdf
+
+    pre = pdg, posy, addstops.copy(), 0
+
+    # Color Rectangle
+    pdf.setFillColor(accent)
+    pdf.setStrokeColor(colors.black)
+    pdf.setLineWidth(1.2)
+    pdf.rect(x=80, y=posy, width=1028, height=30, fill=1)
+
+    # Hours Text
+    pdf.setFont("hour", 17)
+    pdf.setFillColor(colors.white)
+    pdf.drawCentredString(x=165, y=posy + 8.5, text=day)
 
     spacing = 858 / len(daytimes.keys())
     posx = 250 - spacing / 2
@@ -173,17 +186,6 @@ def addtimes(pdf: Canvas, daytimes: dict[str, list[dict[str, str]]], day: str, p
 
     if times == 0:
         return pre
-
-    # Color Rectangle
-    pdf.setFillColor(accent)
-    pdf.setStrokeColor(colors.black)
-    pdf.setLineWidth(1.2)
-    pdf.rect(x=80, y=posy, width=1028, height=30, fill=1)
-
-    # Hours Text
-    pdf.setFont("hour", 17)
-    pdf.setFillColor(colors.white)
-    pdf.drawCentredString(x=165, y=posy + 8.5, text=day)
 
     # Lines
     pdf.line(x1=80, y1=posy + 30, x2=80, y2=posy - times * 25 - 3.5)
@@ -245,16 +247,46 @@ def create_page(
     times = 0
 
     if len(montimes) > 0:
-        pdf, posy, addstops, loctimes = addtimes(pdf, montimes, "Montag-Freitag", posy, accent, dest, addstops)
-        times = max(times, loctimes)
+        loctime = 0
+        for v in montimes.values():
+            for time in v:
+                sp = time["stop"].split()
+                if len(sp[-1]) < 2:
+                    sp.pop()
+                stopn = " ".join(sp)
+                if time["dest"] != stopn:
+                    loctime += 1
+        if loctime > 0:
+            pdf, posy, addstops, loctimes = addtimes(pdf, montimes, "Montag-Freitag", posy, accent, dest, addstops)
+            times = max(times, loctimes)
 
     if len(sattimes) > 0:
-        pdf, posy, addstops, loctimes = addtimes(pdf, sattimes, "Samstag", posy, accent, dest, addstops)
-        times = max(times, loctimes)
+        loctime = 0
+        for v in sattimes.values():
+            for time in v:
+                sp = time["stop"].split()
+                if len(sp[-1]) < 2:
+                    sp.pop()
+                stopn = " ".join(sp)
+                if time["dest"] != stopn:
+                    loctime += 1
+        if loctime > 0:
+            pdf, posy, addstops, loctimes = addtimes(pdf, sattimes, "Samstag", posy, accent, dest, addstops)
+            times = max(times, loctimes)
 
     if len(suntimes) > 0:
-        pdf, posy, addstops, loctimes = addtimes(pdf, suntimes, "Sonntag", posy, accent, dest, addstops)
-        times = max(times, loctimes)
+        loctime = 0
+        for v in suntimes.values():
+            for time in v:
+                sp = time["stop"].split()
+                if len(sp[-1]) < 2:
+                    sp.pop()
+                stopn = " ".join(sp)
+                if time["dest"] != stopn:
+                    loctime += 1
+        if loctime > 0:
+            pdf, posy, addstops, loctimes = addtimes(pdf, suntimes, "Sonntag", posy, accent, dest, addstops)
+            times = max(times, loctimes)
 
     if times == 0:
         return None
