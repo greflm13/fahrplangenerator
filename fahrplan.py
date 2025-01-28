@@ -1,5 +1,6 @@
 import os
 import csv
+import copy
 import random
 import logging
 import argparse
@@ -11,12 +12,12 @@ from rich_argparse import RichHelpFormatter
 from pypdf import PdfReader, PdfWriter
 from pythonjsonlogger import jsonlogger
 
-from reportlab.pdfgen import canvas
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 from reportlab.graphics import renderPDF
 from reportlab.lib import colors, pagesizes
-from svglib.svglib import svg2rlg
+from svglib.svglib import svg2rlg, Drawing
 
 if __package__ is None:
     PACKAGE = ""
@@ -25,9 +26,11 @@ else:
 SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
 LOG_DIR = os.path.join(SCRIPTDIR, "logs")
 LATEST_LOG_FILE = os.path.join(LOG_DIR, "latest.jsonl")
+ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 pdfmetrics.registerFont(TTFont("header", "FiraSans-Black.ttf"))
 pdfmetrics.registerFont(TTFont("hour", "FiraSans-Bold.ttf"))
+pdfmetrics.registerFont(TTFont("add", "FiraSans-Regular.ttf"))
 pdfmetrics.registerFont(TTFont("foot", "FiraSans-Thin.ttf"))
 
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -50,7 +53,6 @@ keys = [
     "relativeCreated",
     "thread",
     "threadName",
-    "taskName",
 ]
 
 custom_format = " ".join([f"%({i})s" for i in keys])
@@ -64,7 +66,7 @@ logger.addHandler(logging.StreamHandler())
 logger.setLevel(level=logging.INFO)
 
 
-def create_merged_pdf(pages: list, path: str):
+def create_merged_pdf(pages: list[str], path: str):
     output = PdfWriter()
 
     for page in pages:
@@ -74,7 +76,25 @@ def create_merged_pdf(pages: list, path: str):
     output.write(path)
 
 
-def dict_set(lst: list):
+def merge_dicts(a: dict[str, dict[str, dict[str, list[dict[str, str]]]]], b: dict[str, dict[str, dict[str, list[dict[str, str]]]]]):
+    c = copy.deepcopy(a)
+    for k, v in b.items():
+        if k in a:
+            for k2, v2 in v.items():
+                if k2 in a[k]:
+                    for k3, v3 in v2.items():
+                        if k3 in a[k][k2]:
+                            c[k][k2][k3].extend(v3)
+                        else:
+                            c[k][k2][k3] = v3
+                else:
+                    c[k][k2] = v2
+        else:
+            c[k] = v
+    return c
+
+
+def dict_set(lst: list[dict[str, str]]):
     seen = []
     setlike = []
     for d in lst:
@@ -85,7 +105,7 @@ def dict_set(lst: list):
     return setlike
 
 
-def most_frequent(l: list):
+def most_frequent(l: list[str]):
     return max(set(l), key=l.count)
 
 
@@ -99,7 +119,7 @@ def merge(l: list[str]):
     return list(set(rl))
 
 
-def scale(drawing, scaling_factor):
+def scale(drawing: Drawing, scaling_factor: float):
     """
     Scale a reportlab.graphics.shapes.Drawing()
     object while maintaining the aspect ratio
@@ -113,8 +133,47 @@ def scale(drawing, scaling_factor):
     return drawing
 
 
-def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: str):
+def addtimes(pdf: Canvas, daytimes: dict[str, list[dict[str, str]]], day: str, posy: float, accent: str, dest: str, addstops: dict[str, int] = {"num": 1}):
     logger.info(f"Add {day}")
+
+    pre = pdf, posy, addstops.copy(), 0
+
+    spacing = 858 / len(daytimes.keys())
+    posx = 250 - spacing / 2
+    times = 0
+    for k, v in daytimes.items():
+        posx += spacing
+        pdf.setFont("hour", 17)
+        pdf.setFillColor(colors.white)
+        pdf.drawCentredString(x=posx, y=posy + 8.5, text=k[1:])
+        space = 0
+        loctimes = 0
+        for time in v:
+            sp = time["stop"].split()
+            if len(sp[-1]) < 2:
+                sp.pop()
+            stopn = " ".join(sp)
+            if time["dest"] != stopn:
+                loctimes += 1
+                # Minutes Text
+                pdf.setFont("hour", 17)
+                pdf.setFillColor(colors.black)
+                pdf.drawCentredString(x=posx, y=posy - 20 + space, text=time["time"][3:])
+                if time["dest"] != dest:
+                    if not addstops.get(time["dest"], False):
+                        addstops[time["dest"]] = addstops["num"]
+                        addstops["num"] += 1
+                    pdf.setFont("add", 8)
+                    pdf.setFontSize(8)
+                    pdf.drawCentredString(x=posx + 12, y=posy - 22 + space, text=ALPHABET[addstops[time["dest"]] - 1])
+                    pdf.setFont("hour", 17)
+                space -= 25
+        times = max(times, loctimes)
+    posx = 250
+
+    if times == 0:
+        return pre
+
     # Color Rectangle
     pdf.setFillColor(accent)
     pdf.setStrokeColor(colors.black)
@@ -125,21 +184,6 @@ def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: 
     pdf.setFont("hour", 17)
     pdf.setFillColor(colors.white)
     pdf.drawCentredString(x=165, y=posy + 8.5, text=day)
-    spacing = 858 / len(daytimes.keys())
-    posx = 250 - spacing / 2
-    times = 0
-    for k, v in daytimes.items():
-        posx += spacing
-        pdf.setFillColor(colors.white)
-        pdf.drawCentredString(x=posx, y=posy + 8.5, text=k[1:])
-        space = 0
-        times = max(times, len(v))
-        for time in v:
-            # Minutes Text
-            pdf.setFillColor(colors.black)
-            pdf.drawCentredString(x=posx, y=posy - 20 + space, text=time["time"][3:])
-            space -= 25
-    posx = 250
 
     # Lines
     pdf.line(x1=80, y1=posy + 30, x2=80, y2=posy - times * 25 - 3.5)
@@ -150,11 +194,19 @@ def addtimes(pdf: canvas.Canvas, daytimes: dict, day: str, posy: float, accent: 
         pdf.line(x1=posx, y1=posy + 30, x2=posx, y2=posy - times * 25 - 3.5)
 
     posy -= 60 + times * 25
-    return pdf, posy
+    return pdf, posy, addstops, times
 
 
 def create_page(
-    line: str, dest: str, stop: str, path: str, montimes: dict, sattimes: dict, suntimes: dict, color: str, logo: tempfile._TemporaryFileWrapper | str | None = "</srgn>"
+    line: str,
+    dest: str,
+    stop: str,
+    path: str,
+    montimes: dict[str, list[dict[str, str]]],
+    sattimes: dict[str, list[dict[str, str]]],
+    suntimes: dict[str, list[dict[str, str]]],
+    color: str,
+    logo: tempfile._TemporaryFileWrapper | str | None = "</srgn>",
 ):
     logger.info(f"Create page for {line} - {dest}")
     limit = 0
@@ -177,7 +229,7 @@ def create_page(
     else:
         pagesize = pagesizes.landscape(pagesizes.A4)
         movey = 0
-    pdf = canvas.Canvas(path, pagesize=pagesize)
+    pdf = Canvas(path, pagesize=pagesize)
     pdf.scale(pagesize[0] / 1188, pagesize[1] / (840 + movey))
     accent = colors.HexColor(color)
 
@@ -188,14 +240,34 @@ def create_page(
 
     posy = 690 + movey
 
+    addstops = {"num": 1}
+
+    times = 0
+
     if len(montimes) > 0:
-        pdf, posy = addtimes(pdf, montimes, "Montag-Freitag", posy, accent)
+        pdf, posy, addstops, loctimes = addtimes(pdf, montimes, "Montag-Freitag", posy, accent, dest, addstops)
+        times = max(times, loctimes)
 
     if len(sattimes) > 0:
-        pdf, posy = addtimes(pdf, sattimes, "Samstag", posy, accent)
+        pdf, posy, addstops, loctimes = addtimes(pdf, sattimes, "Samstag", posy, accent, dest, addstops)
+        times = max(times, loctimes)
 
     if len(suntimes) > 0:
-        pdf, posy = addtimes(pdf, suntimes, "Sonntag", posy, accent)
+        pdf, posy, addstops, loctimes = addtimes(pdf, suntimes, "Sonntag", posy, accent, dest, addstops)
+        times = max(times, loctimes)
+
+    if times == 0:
+        return None
+
+    addstops.pop("num")
+
+    if len(addstops.keys()) > 0:
+        pdf.setFont("add", 10)
+        pdf.setFillColor(colors.black)
+        y = posy + 34
+        for k, v in addstops.items():
+            pdf.drawString(x=80, y=y, text=f"{ALPHABET[v - 1]}: Bis {k}")
+            y -= 10
 
     if isinstance(logo, tempfile._TemporaryFileWrapper):
         drawing = svg2rlg(logo.name)
@@ -297,9 +369,9 @@ def main():
     for rout in ourroute:
         routes[rout["route_id"]] = rout
 
-    mon = []
-    sat = []
-    sun = []
+    mon: list[dict[str, str]] = []
+    sat: list[dict[str, str]] = []
+    sun: list[dict[str, str]] = []
 
     for trip in ourtrips:
         if calendar[trip["service_id"]]["monday"] == "1":
@@ -337,9 +409,9 @@ def main():
     sat = sorted(dict_set(sat), key=lambda x: x["time"])
     sun = sorted(dict_set(sun), key=lambda x: x["time"])
 
-    mondict = {}
-    satdict = {}
-    sundict = {}
+    mondict: dict[str, dict[str, dict[str, list[dict[str, str]]]]] = {}
+    satdict: dict[str, dict[str, dict[str, list[dict[str, str]]]]] = {}
+    sundict: dict[str, dict[str, dict[str, list[dict[str, str]]]]] = {}
 
     for trip in mon:
         if not mondict.get(trip["line"], False):
@@ -371,9 +443,9 @@ def main():
                 sundict[trip["line"]][f"d{trip['dire']}"][f"t{i:02}"] = []
         sundict[trip["line"]][f"d{trip['dire']}"].setdefault(f"t{trip['time'][:2]}", []).append(trip)
 
-    pages = {}
+    pages: dict[str, dict[str, str | None]] = {}
 
-    lines = mondict | satdict | sundict
+    lines = merge_dicts(merge_dicts(mondict, satdict), sundict)
 
     if args.logo:
         try:
@@ -399,37 +471,39 @@ def main():
             color = args.color
         if not pages.get(line, False):
             pages[line] = {}
-        for k, dire in dires.items():
+        for k in dires.keys():
             destlist = []
-            stoplist = []
-            for time in dire.values():
+            for time in mondict.get(line, satdict.get(line, sundict.get(line, {}))).get(k, satdict.get(line, {}).get(k, sundict.get(line, {}).get(k))).values():
                 destlist.extend([t["dest"] for t in time])
-                stoplist.extend([t["stop"] for t in time])
-            page = pages.get(line, {}).get(k, {})
-            if page == {}:
-                page = tempfile.mkstemp(suffix=".pdf")[1]
-            pages[line][k] = create_page(
-                line,
-                most_frequent(destlist),
-                ourstop,
-                page,
-                mondict.get(line, {}).get(k, {}),
-                satdict.get(line, {}).get(k, {}),
-                sundict.get(line, {}).get(k, {}),
-                color,
-                tmpfile,
-            )
+            dest = most_frequent(destlist)
+            if dest != ourstop:
+                page = pages.get(line, {}).get(k, {})
+                if page == {}:
+                    page = tempfile.mkstemp(suffix=".pdf")[1]
+                pages[line][k] = create_page(
+                    line,
+                    dest,
+                    ourstop,
+                    page,
+                    mondict.get(line, {}).get(k, {}),
+                    satdict.get(line, {}).get(k, {}),
+                    sundict.get(line, {}).get(k, {}),
+                    color,
+                    tmpfile,
+                )
 
-    pagelst = []
+    pagelst: list[str] = []
     for line in pages.values():
         for dire in line.values():
-            pagelst.append(dire)
+            if dire is not None:
+                pagelst.append(dire)
 
     create_merged_pdf(pagelst, args.output)
 
     for line in pages.values():
         for dire in line.values():
-            os.remove(dire)
+            if dire is not None:
+                os.remove(dire)
 
 
 if __name__ == "__main__":
