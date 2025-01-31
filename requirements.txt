@@ -1,7 +1,7 @@
-pypdf==5.1.0
+pypdf==5.2.0
 python_json_logger==3.2.1
+questionary==2.1.0
 reportlab==4.2.5
 Requests==2.32.3
 rich_argparse==1.6.0
-survey==5.4.2
 svglib==1.5.1

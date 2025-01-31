@@ -6,8 +6,8 @@ import logging
 import argparse
 import tempfile
 
-import survey
 import requests
+import questionary
 from rich_argparse import RichHelpFormatter
 from pypdf import PdfReader, PdfWriter
 from pythonjsonlogger import jsonlogger
@@ -113,7 +113,7 @@ def merge(l: list[str]):
     rl = []
     for i in l:
         sp = i.split()
-        if len(sp[-1]) < 2:
+        if len(sp[-1]) < 3:
             sp.pop()
         rl.append(" ".join(sp))
     return list(set(rl))
@@ -131,6 +131,27 @@ def scale(drawing: Drawing, scaling_factor: float):
     drawing.height = drawing.height * scaling_y
     drawing.scale(scaling_x, scaling_y)
     return drawing
+
+
+def is_contrasting(color):
+    r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+    brightness = (r * 299 + g * 587 + b * 114) / 1000
+    return brightness < 157  # Ensures enough contrast with white
+
+
+def is_vibrant(color):
+    r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+    max_channel = max(r, g, b)
+    min_channel = min(r, g, b)
+    saturation = (max_channel - min_channel) / max_channel if max_channel else 0
+    return 0.9 > saturation > 0.2  # Ensures the color is not too grey
+
+
+def generate_contrasting_vibrant_color():
+    while True:
+        color = "#" + "".join(random.choice("0123456789abcdef") for _ in range(6))
+        if is_contrasting(color) and is_vibrant(color):
+            return color
 
 
 def addtimes(pdf: Canvas, daytimes: dict[str, list[dict[str, str]]], day: str, posy: float, accent: str, dest: str, addstops: dict[str, int] = {"num": 1}):
@@ -346,11 +367,21 @@ def main():
 
             with open(os.path.join(folder, "routes.txt"), mode="r", encoding="utf-8-sig") as f:
                 routes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+    custom_style = questionary.Style(
+        [
+            ("question", "fg:#ff0000 bold"),  # Red and bold for the question
+            ("answer", "fg:#00ff00 bold"),  # Green and bold for the answer
+            ("pointer", "fg:#0000ff bold"),  # Blue and bold for the pointer
+            ("highlighted", "fg:#ffff00 bold"),  # Yellow and bold for highlighted text
+            ("completion-menu", "bg:#000000"),  # Black background for the suggestion box
+            ("completion-menu.completion.current", "bg:#444444"),  # Dark gray background for the selected suggestion
+        ]
+    )
 
     if args.stop == "":
         choices = merge(sorted({stop["stop_name"] for stop in stops if stop.get("parent_station", "") == ""}))
-        choice = survey.routines.select("Haltestelle/Bahnhof: ", options=choices)
-        ourstop = choices[choice]
+        choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
+        ourstop = choice
     else:
         ourstop = args.stop.strip()
 
@@ -359,14 +390,14 @@ def main():
     ourstops = []
     for stop in stops:
         sp = stop["stop_name"].split()
-        if len(sp[-1]) < 2:
+        if len(sp[-1]) < 3:
             sp.pop()
         stopn = " ".join(sp)
         if stopn == ourstop:
             ourstops.append(stop)
     ourstops.extend([stop for stop in stops if stop.get("parent_station", "") in [s["stop_id"] for s in ourstops]])
     logger.info("computing our times")
-    ourtimes = [time for time in stop_times if time["stop_id"] in [stop["stop_id"] for stop in ourstops]]
+    ourtimes = [time for time in stop_times if time["stop_id"] in [stop["stop_id"] for stop in ourstops] and time.get("pickup_type", "0") == "0"]
     logger.info("computing our trips")
     ourtrips = [trip for trip in trips if trip["trip_id"] in [time["trip_id"] for time in ourtimes]]
     logger.info("computing our services")
@@ -498,7 +529,7 @@ def main():
 
     for line, dires in lines.items():
         if args.color == "random":
-            color = "#" + "".join(random.choice("0123456789abcdef") for _ in range(6))
+            color = generate_contrasting_vibrant_color()
         else:
             color = args.color
         if not pages.get(line, False):
