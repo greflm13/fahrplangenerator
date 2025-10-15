@@ -387,7 +387,12 @@ def main():
         ]
     )
 
-    # Fix parent stop names from children using the most common name removing platform suffixes like "1" and "B"
+    stop_hierarchy = {stop["stop_id"]: stop for stop in stops if stop.get("parent_station", "") == ""}
+    for stop in tqdm.tqdm(stops, desc="Building stop hierarchy", unit=" stops", ascii=True, dynamic_ncols=True):
+        if stop.get("parent_station", "") != "":
+            if not stop_hierarchy[stop["parent_station"]].get("children", False):
+                stop_hierarchy[stop["parent_station"]]["children"] = []
+            stop_hierarchy[stop["parent_station"]]["children"].append(stop)
     parent_stops = [stop for stop in stops if stop.get("parent_station", "") == ""]
     for stop in tqdm.tqdm(parent_stops, desc="Fixing parent stop names", unit=" stops", ascii=True, dynamic_ncols=True):
         child_names = [s["stop_name"] for s in stops if s.get("parent_station", "") == stop["stop_id"]]

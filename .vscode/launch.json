@@ -12,7 +12,23 @@
             "console": "integratedTerminal",
             "args": [
                 "-i",
-                "/home/user/Downloads/GTFS_OP_2025_obb"
+                "~/Documents/20251012-2010-at-styria-2025/gkb-at/",
+                "-i",
+                "~/Documents/20251012-2010-at-styria-2025/grazholding-at/",
+                "-i",
+                "~/Documents/20251012-2010-at-styria-2025/grazverbundlinie-at/",
+                "-i",
+                "~/Documents/20251012-2010-at-styria-2025/regiobusverbundlinie-at/",
+                "-i",
+                "~/Documents/20251012-2010-at-styria-2025/regionalbusverbundlinie-at/",
+                "-i",
+                "~/Documents/20251012-2010-at-styria-2025/schiffverbundlinie-at/",
+                "-i",
+                "~/Documents/20251012-2010-at-styria-2025/seilbahnverbundlinie-at/",
+                "-i",
+                "~/Documents/20251012-2010-at-styria-2025/stb-at/",
+                "-i",
+                "~/Documents/20251012-2010-at-styria-2025/stwl-at/"
             ]
         }
     ]
