@@ -113,13 +113,17 @@ def most_frequent(lst: list[str]):
     return max(set(lst), key=lst.count, default="")
 
 
+def remove_suffix(text: str) -> str:
+    sp = text.split()
+    if len(sp[-1]) < 3:
+        sp.pop()
+    return " ".join(sp)
+
+
 def merge(lst: list[str]):
     rl = []
     for i in lst:
-        sp = i.split()
-        if len(sp[-1]) < 3:
-            sp.pop()
-        rl.append(" ".join(sp))
+        rl.append(remove_suffix(i))
     return rl
 
 
@@ -387,33 +391,40 @@ def main():
         ]
     )
 
-    stop_hierarchy = {stop["stop_id"]: stop for stop in stops if stop.get("parent_station", "") == ""}
-    for stop in tqdm.tqdm(stops, desc="Building stop hierarchy", unit=" stops", ascii=True, dynamic_ncols=True):
-        if stop.get("parent_station", "") != "":
-            if not stop_hierarchy[stop["parent_station"]].get("children", False):
-                stop_hierarchy[stop["parent_station"]]["children"] = []
-            stop_hierarchy[stop["parent_station"]]["children"].append(stop)
+    # stop_hierarchy = {stop["stop_id"]: stop for stop in stops if stop.get("parent_station", "") == ""}
+    # for stop in tqdm.tqdm(stops, desc="Building stop hierarchy", unit=" stops", ascii=True, dynamic_ncols=True):
+    #     if stop.get("parent_station", "") != "":
+    #         if not stop_hierarchy[stop["parent_station"]].get("children", False):
+    #             stop_hierarchy[stop["parent_station"]]["children"] = []
+    #         stop_hierarchy[stop["parent_station"]]["children"].append(stop)
+    stopss = {}
     parent_stops = [stop for stop in stops if stop.get("parent_station", "") == ""]
     for stop in tqdm.tqdm(parent_stops, desc="Fixing parent stop names", unit=" stops", ascii=True, dynamic_ncols=True):
+        stop["stop_ids"] = [stop["stop_id"]]
         child_names = [s["stop_name"] for s in stops if s.get("parent_station", "") == stop["stop_id"]]
         if child_names:
             child_name = most_frequent(merge(child_names))
             if stop["stop_name"] not in child_name and child_name not in stop["stop_name"]:
                 child_name = child_name + " " + stop["stop_name"]
-            stop["stop_name"] = child_name
+            stop["stop_name"] = max(child_name, stop["stop_name"], key=len)
+        if stopss.get(stop["stop_name"], False):
+            stopss[stop["stop_name"]]["stop_ids"].append(stop["stop_id"])
+        else:
+            stopss[stop["stop_name"]] = stop
     logger.info("loaded data")
 
-    stopss = {stop["stop_name"]: stop for stop in parent_stops}
     choices = sorted({stop["stop_name"] for stop in parent_stops})
     choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
     ourstop = stopss[choice]
 
     logger.info("computing our stops")
-
-    ourstops = [ourstop]
+    ourstops = []
     for stop in tqdm.tqdm(stops, desc="Finding stops", unit=" stops", ascii=True, dynamic_ncols=True):
-        if stop.get("parent_station", "") == ourstop["stop_id"]:
-            ourstops.append(stop)
+        for stopid in ourstop.get("stop_ids", [ourstop["stop_id"]]):
+            if stop.get("parent_station", "") == stopid and stop not in ourstops:
+                ourstops.append(stop)
+            elif stop["stop_id"] == stopid and stop not in ourstops:
+                ourstops.append(stop)
     logger.info("computing our times")
     ourtimes = []
     for time in tqdm.tqdm(stop_times, desc="Finding stop times", unit=" stop times", ascii=True, dynamic_ncols=True):
@@ -551,8 +562,11 @@ def main():
             logger.info("fallback to string logo")
             try:
                 pdfmetrics.registerFont(TTFont("logo", "BarlowCondensed_Thin.ttf"))
-            except:
-                pdfmetrics.registerFont(TTFont("logo", "FiraSans-Thin.ttf"))
+            except Exception:
+                try:
+                    pdfmetrics.registerFont(TTFont("logo", "BarlowCondensed-Thin.ttf"))
+                except Exception:
+                    pdfmetrics.registerFont(TTFont("logo", "FiraSans-Thin.ttf"))
             tmpfile = "</srgn>"
     else:
         tmpfile = None
