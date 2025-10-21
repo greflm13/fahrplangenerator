@@ -520,7 +520,7 @@ def main():
     for trip in tqdm.tqdm(mon, desc="Indexing Monday-Friday trips", unit=" trips", ascii=True, dynamic_ncols=True):
         if not mondict.get(trip["line"], False):
             mondict[trip["line"]] = {}
-        if not mondict.get(trip["line"]).get(f"d{trip['dire']}", False):
+        if not mondict.get(trip["line"], {}).get(f"d{trip['dire']}", False):
             mondict[trip["line"]][f"d{trip['dire']}"] = {}
         for i in range(0, 24):
             if not mondict[trip["line"]][f"d{trip['dire']}"].get(f"t{i:02}", False):
@@ -530,7 +530,7 @@ def main():
     for trip in tqdm.tqdm(sat, desc="Indexing Saturday trips", unit=" trips", ascii=True, dynamic_ncols=True):
         if not satdict.get(trip["line"], False):
             satdict[trip["line"]] = {}
-        if not satdict.get(trip["line"]).get(f"d{trip['dire']}", False):
+        if not satdict.get(trip["line"], {}).get(f"d{trip['dire']}", False):
             satdict[trip["line"]][f"d{trip['dire']}"] = {}
         for i in range(0, 24):
             if not satdict[trip["line"]][f"d{trip['dire']}"].get(f"t{i:02}", False):
@@ -540,7 +540,7 @@ def main():
     for trip in tqdm.tqdm(sun, desc="Indexing Sunday trips", unit=" trips", ascii=True, dynamic_ncols=True):
         if not sundict.get(trip["line"], False):
             sundict[trip["line"]] = {}
-        if not sundict.get(trip["line"]).get(f"d{trip['dire']}", False):
+        if not sundict.get(trip["line"], {}).get(f"d{trip['dire']}", False):
             sundict[trip["line"]][f"d{trip['dire']}"] = {}
         for i in range(0, 24):
             if not sundict[trip["line"]][f"d{trip['dire']}"].get(f"t{i:02}", False):
@@ -580,12 +580,12 @@ def main():
             pages[line] = {}
         for k in dires.keys():
             destlist = []
-            for time in mondict.get(line, satdict.get(line, sundict.get(line, {}))).get(k, satdict.get(line, {}).get(k, sundict.get(line, {}).get(k))).values():
+            for time in mondict.get(line, satdict.get(line, sundict.get(line, {}))).get(k, satdict.get(line, {}).get(k, sundict.get(line, {}).get(k, {}))).values():
                 destlist.extend([t["dest"] for t in time])
             dest = most_frequent(destlist)
             if dest != ourstop:
                 page = pages.get(line, {}).get(k, {})
-                if page == {}:
+                if not isinstance(page, str):
                     page = tempfile.mkstemp(suffix=".pdf")[1]
                 pages[line][k] = create_page(
                     line,
