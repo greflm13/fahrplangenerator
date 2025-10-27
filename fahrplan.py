@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import os
 import csv
 import copy
@@ -115,8 +117,9 @@ def most_frequent(lst: list[str]):
 
 def remove_suffix(text: str) -> str:
     sp = text.split()
-    if len(sp[-1]) < 3:
-        sp.pop()
+    if len(sp) > 0:
+        if len(sp[-1]) < 3:
+            sp.pop()
     return " ".join(sp)
 
 
