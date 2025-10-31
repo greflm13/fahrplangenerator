@@ -147,7 +147,7 @@ def scale(drawing: Drawing, scaling_factor: float):
 def is_contrasting(color):
     r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
     brightness = (r * 299 + g * 587 + b * 114) / 1000
-    return brightness < 157  # Ensures enough contrast with white
+    return brightness < 157
 
 
 def is_vibrant(color):
@@ -155,7 +155,7 @@ def is_vibrant(color):
     max_channel = max(r, g, b)
     min_channel = min(r, g, b)
     saturation = (max_channel - min_channel) / max_channel if max_channel else 0
-    return 0.9 > saturation > 0.2  # Ensures the color is not too grey
+    return 0.9 > saturation > 0.2
 
 
 def generate_contrasting_vibrant_color():
@@ -385,21 +385,15 @@ def main():
                 routes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
     custom_style = questionary.Style(
         [
-            ("question", "fg:#ff0000 bold"),  # Red and bold for the question
-            ("answer", "fg:#00ff00 bold"),  # Green and bold for the answer
-            ("pointer", "fg:#0000ff bold"),  # Blue and bold for the pointer
-            ("highlighted", "fg:#ffff00 bold"),  # Yellow and bold for highlighted text
-            ("completion-menu", "bg:#000000"),  # Black background for the suggestion box
-            ("completion-menu.completion.current", "bg:#444444"),  # Dark gray background for the selected suggestion
+            ("question", "fg:#ff0000 bold"),
+            ("answer", "fg:#00ff00 bold"),
+            ("pointer", "fg:#0000ff bold"),
+            ("highlighted", "fg:#ffff00 bold"),
+            ("completion-menu", "bg:#000000"),
+            ("completion-menu.completion.current", "bg:#444444"),
         ]
     )
 
-    # stop_hierarchy = {stop["stop_id"]: stop for stop in stops if stop.get("parent_station", "") == ""}
-    # for stop in tqdm.tqdm(stops, desc="Building stop hierarchy", unit=" stops", ascii=True, dynamic_ncols=True):
-    #     if stop.get("parent_station", "") != "":
-    #         if not stop_hierarchy[stop["parent_station"]].get("children", False):
-    #             stop_hierarchy[stop["parent_station"]]["children"] = []
-    #         stop_hierarchy[stop["parent_station"]]["children"].append(stop)
     stopss = {}
     parent_stops = [stop for stop in stops if stop.get("parent_station", "") == ""]
     for stop in tqdm.tqdm(parent_stops, desc="Fixing parent stop names", unit=" stops", ascii=True, dynamic_ncols=True):
