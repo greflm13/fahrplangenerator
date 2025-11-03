@@ -55,7 +55,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-i", "--input", action="extend", nargs="+", required=True, help="Input directory(s) containing GTFS shapes.txt", dest="gtfs")
     parser.add_argument("-z", "--zoom", type=int, default=-1, help="Zoom level for the basemap", dest="zoom")
     parser.add_argument("-c", "--color", type=str, default="green", help="Color of the shapes on the map", dest="color")
-    parser.add_argument("-l", "--linewidth", type=float, default=None, help="Line width of the shapes on the map", dest="linewidth")
+    parser.add_argument("-l", "--linewidth", type=float, default=2.0, help="Line width of the shapes on the map", dest="linewidth")
+    parser.add_argument("--label-rotation", type=int, default=30, help="Fixed rotation angle (degrees) to apply to all stop labels")
     parser.add_argument("-s", "--stops", action="store_true", help="Plot stops along the selected route", dest="plot_stops")
     return parser.parse_args()
 
@@ -294,6 +295,7 @@ def plot_stops_on_ax(
     marker_size: int = 30,
     label_fontsize: int = 7,
     target_crs: Optional[str] = None,
+    label_rotation: int = 30,
 ) -> int:
     """Plot stops for a given shape_id onto the provided axes and annotate stop names.
 
@@ -359,8 +361,11 @@ def plot_stops_on_ax(
 
     used_bboxes = []
     offsets = [(4, 4), (-4, 4), (4, -4), (-4, -4), (8, 0), (-8, 0), (0, 8), (0, -8)]
-    # try rotated labels before falling back to non-rotated (0). Prioritize gentler tilts first.
-    angles = [-30, 30, -45, 45, -90, 90, 0]
+    # Use a single fixed rotation for all labels so the map looks consistent.
+    # This rotation is tried first for each label; only if placement fails we
+    # reduce fontsize. Change this angle to taste (degrees).
+    fixed_angle = int(label_rotation)
+    angles = [fixed_angle]
 
     for idx, row in gdf_stops.iterrows():
         pt = row.geometry
@@ -371,6 +376,7 @@ def plot_stops_on_ax(
         placed = False
 
         while fontsize >= 5 and not placed:
+            # Try the single fixed rotation with different offsets first.
             for angle in angles:
                 for off in offsets:
                     try:
@@ -417,6 +423,7 @@ def plot_stops_on_ax(
                 if placed:
                     break
             if not placed:
+                # only reduce fontsize after all offsets with the fixed rotation failed
                 fontsize -= 1
 
         if not placed:
@@ -544,8 +551,13 @@ def main():
             miny -= extra
             maxy += extra
 
-        ax = gdf_3857.plot(facecolor="none", edgecolor=args.color, linewidth=args.linewidth, figsize=figsize)
+        # Create a fresh figure/axes sized to the target aspect. We'll render
+        # the basemap image to this axes and then plot the route on top. Using
+        # plt.subplots prevents GeoPandas from autoscaling the axes and
+        # collapsing the image/geometry into a tiny blob.
+        fig, ax = plt.subplots(figsize=figsize)
         ax.set_axis_off()
+        ax.set_aspect("equal", adjustable="box")
 
         logger.info("Generating map for %s -> %s...", route[1], route[2])
 
@@ -640,6 +652,9 @@ def main():
             if img is not None:
                 break
 
+        # track final extent we'll use for plotting overlays
+        final_minx, final_miny, final_maxx, final_maxy = minx, miny, maxx, maxy
+
         if img is not None and img_ext is not None:
             try:
                 # Crop the fetched tile image to the exact figure aspect centered on the route bbox.
@@ -683,13 +698,16 @@ def main():
                 # ensure indices valid
                 if rx > lx and by > ty:
                     cropped = img[ty:by, lx:rx].copy()
-                    ax.imshow(cropped, extent=(des_minx, des_maxx, des_miny, des_maxy), origin="upper", interpolation="nearest")
+                    ax.imshow(cropped, extent=(des_minx, des_maxx, des_miny, des_maxy), origin="lower", interpolation="nearest")
+                    final_minx, final_maxx, final_miny, final_maxy = des_minx, des_maxx, des_miny, des_maxy
                 else:
                     # fallback to showing full image extent
-                    ax.imshow(img, extent=(west, east, south, north), origin="upper", interpolation="nearest")
+                    ax.imshow(img, extent=(west, east, south, north), origin="lower", interpolation="nearest")
+                    final_minx, final_maxx, final_miny, final_maxy = west, east, south, north
             except Exception:
                 try:
-                    ax.imshow(img, extent=(minx, maxx, miny, maxy), origin="upper", interpolation="nearest")
+                    ax.imshow(img, extent=(minx, maxx, miny, maxy), origin="lower", interpolation="nearest")
+                    final_minx, final_maxx, final_miny, final_maxy = minx, maxx, miny, maxy
                 except Exception:
                     logger.debug("ax.imshow failed for basemap image, falling back to add_basemap")
                     try:
@@ -702,6 +720,13 @@ def main():
             except Exception as exc:
                 logger.warning("Failed to add basemap fallback: %s", exc)
 
+        # Ensure overlays are plotted in the same extent as the basemap image
+        try:
+            ax.set_xlim(final_minx, final_maxx)
+            ax.set_ylim(final_miny, final_maxy)
+        except Exception:
+            pass
+
         try:
             gdf_3857.plot(ax=ax, facecolor="none", edgecolor=args.color, linewidth=args.linewidth)
         except Exception:
@@ -710,7 +735,7 @@ def main():
         if args.plot_stops:
             logger.info("Plotting stops for route %s -> %s", route[1], route[2])
             try:
-                n = plot_stops_on_ax(ax, sid, trips, stops_index, stop_times_index, line_color=args.color, target_crs="EPSG:3857")
+                n = plot_stops_on_ax(ax, sid, trips, stops_index, stop_times_index, line_color=args.color, target_crs="EPSG:3857", label_rotation=args.label_rotation)
                 logger.info("Plotted %d stops for route", n)
             except Exception as exc:
                 logger.warning("Exception while plotting stops: %s", exc)
