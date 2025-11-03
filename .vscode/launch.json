@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File with Arguments",
+            "name": "Python Debugger: fahrplan.py",
             "type": "debugpy",
             "request": "launch",
             "program": "fahrplan.py",
@@ -31,6 +31,21 @@
                 "~/Documents/20251012-2010-at-styria-2025/stwl-at/",
                 "-i",
                 "~/Documents/20251011-0009_gtfs_evu_2026/"
+            ]
+        },
+        {
+            "name": "Python Debugger: map.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "map.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-i",
+                "~/Documents/20251012-2010-at-styria-2025/grazholding-at/",
+                "-z",
+                "12",
+                "-l",
+                "0.5",
             ]
         }
     ]

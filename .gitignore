@@ -173,3 +173,4 @@ cython_debug/
 # Output
 *.pdf
 logs
+*.png
