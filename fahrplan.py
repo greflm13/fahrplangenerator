@@ -4,7 +4,6 @@ import os
 import csv
 import copy
 import random
-import logging
 import argparse
 import tempfile
 
@@ -13,7 +12,6 @@ import requests
 import questionary
 from rich_argparse import RichHelpFormatter
 from pypdf import PdfReader, PdfWriter
-from pythonjsonlogger import json as jsonlogger
 
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.pdfbase.ttfonts import TTFont
@@ -22,50 +20,14 @@ from reportlab.graphics import renderPDF
 from reportlab.lib import colors, pagesizes
 from svglib.svglib import svg2rlg, Drawing
 
-if __package__ is None:
-    PACKAGE = ""
-else:
-    PACKAGE = __package__
-SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
-LOG_DIR = os.path.join(SCRIPTDIR, "logs")
-LATEST_LOG_FILE = os.path.join(LOG_DIR, "latest.jsonl")
+from modules.logger import logger
+
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 pdfmetrics.registerFont(TTFont("header", "FiraSans-Black.ttf"))
 pdfmetrics.registerFont(TTFont("hour", "FiraSans-Bold.ttf"))
 pdfmetrics.registerFont(TTFont("add", "FiraSans-Regular.ttf"))
 pdfmetrics.registerFont(TTFont("foot", "FiraSans-Thin.ttf"))
-
-os.makedirs(LOG_DIR, exist_ok=True)
-logger = logging.getLogger(name="defaultlogger")
-keys = [
-    "asctime",
-    "created",
-    "filename",
-    "funcName",
-    "levelname",
-    "levelno",
-    "lineno",
-    "module",
-    "msecs",
-    "message",
-    "name",
-    "pathname",
-    "process",
-    "processName",
-    "relativeCreated",
-    "thread",
-    "threadName",
-]
-
-custom_format = " ".join([f"%({i})s" for i in keys])
-formatter = jsonlogger.JsonFormatter(custom_format)
-
-log_handler = logging.FileHandler(LATEST_LOG_FILE)
-log_handler.setFormatter(formatter)
-
-logger.addHandler(log_handler)
-logger.setLevel(level=logging.INFO)
 
 
 def create_merged_pdf(pages: list[str], path: str):
