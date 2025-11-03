@@ -9,6 +9,7 @@ import contextily as cx
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
+from matplotlib.figure import Figure
 import geopandas as gpd
 from shapely.geometry import shape, Point
 import pickle
@@ -55,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-z", "--zoom", type=int, default=-1, help="Zoom level for the basemap", dest="zoom")
     parser.add_argument("-c", "--color", type=str, default="green", help="Color of the shapes on the map", dest="color")
     parser.add_argument("-l", "--linewidth", type=float, default=None, help="Line width of the shapes on the map", dest="linewidth")
-    parser.add_argument("-s", "--stops", action="store_true", dest="plot_stops", help="Plot stops along the selected route")
+    parser.add_argument("-s", "--stops", action="store_true", help="Plot stops along the selected route", dest="plot_stops")
     return parser.parse_args()
 
 
@@ -79,7 +80,7 @@ def compute_cache_key(file_paths: List[str]) -> str:
 
 
 def get_cache_path(key: str) -> str:
-    cache_dir = os.path.join(SCRIPTDIR, "cache")
+    cache_dir = os.path.join(SCRIPTDIR, "__pycache__")
     os.makedirs(cache_dir, exist_ok=True)
     return os.path.join(cache_dir, f"stop_index_{key}.pkl")
 
@@ -292,6 +293,7 @@ def plot_stops_on_ax(
     line_color: str = "green",
     marker_size: int = 30,
     label_fontsize: int = 7,
+    target_crs: Optional[str] = None,
 ) -> int:
     """Plot stops for a given shape_id onto the provided axes and annotate stop names.
 
@@ -336,37 +338,103 @@ def plot_stops_on_ax(
         return 0
 
     gdf_stops = gpd.GeoDataFrame(stop_rows, geometry=stop_points, crs="EPSG:4326")
+    if target_crs:
+        try:
+            gdf_stops = gdf_stops.to_crs(target_crs)
+        except Exception:
+            logger.debug("Failed to transform stops to %s, keeping original CRS", target_crs)
+
     try:
         gdf_stops.plot(ax=ax, color=stop_color, markersize=marker_size, zorder=5)
     except Exception as exc:
         logger.warning("Failed to plot stops GeoDataFrame: %s", exc)
         return 0
 
+    fig = ax.figure
+    try:
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+    except Exception:
+        renderer = None
+
+    used_bboxes = []
+    offsets = [(4, 4), (-4, 4), (4, -4), (-4, -4), (8, 0), (-8, 0), (0, 8), (0, -8)]
+    angles = [0, -45, 45, -90, 90]
+
     for idx, row in gdf_stops.iterrows():
         pt = row.geometry
         name = row.get("stop_name", "")
         if not name:
             continue
-        try:
-            txt = ax.annotate(
-                name,
-                xy=(pt.x, pt.y),
-                xytext=(4, 4),
-                textcoords="offset points",
-                fontsize=label_fontsize,
-                color="black",
-                ha="left",
-                va="bottom",
-                zorder=6,
-                bbox={"boxstyle": "round,pad=0.2", "facecolor": "white", "edgecolor": "black", "linewidth": 0.4, "alpha": 0.9},
-                clip_on=False,
-            )
+        fontsize = label_fontsize
+        placed = False
+
+        while fontsize >= 5 and not placed:
+            for angle in angles:
+                for off in offsets:
+                    try:
+                        txt = ax.annotate(
+                            name,
+                            xy=(pt.x, pt.y),
+                            xytext=off,
+                            textcoords="offset points",
+                            fontsize=fontsize,
+                            color="black",
+                            ha="left",
+                            va="bottom",
+                            rotation=angle,
+                            rotation_mode="anchor",
+                            zorder=6,
+                            bbox={"boxstyle": "round,pad=0.2", "facecolor": "white", "edgecolor": "black", "linewidth": 0.4, "alpha": 0.9},
+                            clip_on=False,
+                        )
+                        try:
+                            txt.set_path_effects([pe.withStroke(linewidth=0.5, foreground="white")])
+                        except Exception:
+                            pass
+                        if renderer is None:
+                            placed = True
+                            break
+                        bbox = txt.get_window_extent(renderer)
+                        overlap = False
+                        for ub in used_bboxes:
+                            if ub is not None and bbox.overlaps(ub):
+                                overlap = True
+                                break
+                        if not overlap:
+                            used_bboxes.append(bbox)
+                            placed = True
+                            break
+                        else:
+                            txt.remove()
+                    except Exception:
+                        try:
+                            txt.remove()
+                        except Exception:
+                            pass
+                        continue
+                if placed:
+                    break
+            if not placed:
+                fontsize -= 1
+
+        if not placed:
             try:
-                txt.set_path_effects([pe.withStroke(linewidth=0.5, foreground="white")])
+                ax.annotate(
+                    name,
+                    xy=(pt.x, pt.y),
+                    xytext=offsets[0],
+                    textcoords="offset points",
+                    fontsize=max(5, label_fontsize - 2),
+                    color="black",
+                    ha="left",
+                    va="bottom",
+                    zorder=6,
+                    bbox={"boxstyle": "round,pad=0.2", "facecolor": "white", "edgecolor": "black", "linewidth": 0.4, "alpha": 0.9},
+                    clip_on=False,
+                )
             except Exception:
                 pass
-        except Exception:
-            continue
 
     return len(gdf_stops)
 
@@ -442,17 +510,50 @@ def main():
         points = shapedict[sid]["points"]
         geodata.append(shape({"type": "LineString", "coordinates": points}))
 
+        unit = 10.0
+        default_portrait = (unit, unit * math.sqrt(2))
+        default_landscape = (unit * math.sqrt(2), unit)
+
         gdf = gpd.GeoDataFrame({"geometry": geodata}, crs="EPSG:4326")
-        ax = gdf.plot(facecolor="none", edgecolor=args.color, linewidth=args.linewidth, figsize=(10, 10))
+        try:
+            gdf_3857 = gdf.to_crs(epsg=3857)
+        except Exception:
+            gdf_3857 = gdf
+
+        minx, miny, maxx, maxy = gdf_3857.total_bounds
+        bbox_w = maxx - minx if maxx > minx else 1.0
+        bbox_h = maxy - miny if maxy > miny else 1.0
+
+        bbox_aspect = bbox_w / bbox_h
+        if bbox_aspect >= 1.0:
+            figsize = default_landscape
+            fig_aspect = figsize[0] / figsize[1]
+        else:
+            figsize = default_portrait
+            fig_aspect = figsize[0] / figsize[1]
+
+        target_w = bbox_h * fig_aspect
+        target_h = bbox_w / fig_aspect
+        if target_w > bbox_w:
+            extra = (target_w - bbox_w) / 2.0
+            minx -= extra
+            maxx += extra
+        elif target_h > bbox_h:
+            extra = (target_h - bbox_h) / 2.0
+            miny -= extra
+            maxy += extra
+
+        ax = gdf_3857.plot(facecolor="none", edgecolor=args.color, linewidth=args.linewidth, figsize=figsize)
         ax.set_axis_off()
         logger.info("Generating map for %s -> %s...", route[1], route[2])
         zoom_param = args.zoom if args.zoom >= 0 else "auto"
         try:
             logger.debug("Adding basemap with zoom=%s and provider=BasemapAT", zoom_param)
-            cx.add_basemap(ax=ax, crs="EPSG:4326", source=cx.providers.BasemapAT.basemap, zoom=zoom_param)
+            # ax is plotted in Web Mercator; request basemap in EPSG:3857
+            cx.add_basemap(ax=ax, crs="EPSG:3857", source=cx.providers.BasemapAT.basemap, zoom=zoom_param)
         except Exception as exc:
             logger.warning("Failed to add basemap: %s", exc)
-        outname = f"{route[1].replace('/', '')} - {route[2].replace('/', '')}_map.png"
+        outname = f"{route[1].replace('/', '')} - {route[2].replace('/', '')} Map.png"
         if args.plot_stops:
             logger.info("Plotting stops for route %s -> %s", route[1], route[2])
             try:
@@ -462,7 +563,21 @@ def main():
                 logger.warning("Exception while plotting stops: %s", exc)
 
         try:
-            plt.savefig(outname, dpi=1200, bbox_inches="tight", pad_inches=0)
+            fig_obj = ax.figure
+            if not isinstance(fig_obj, Figure):
+                fig_obj = plt.gcf()
+            try:
+                fig_obj.set_size_inches(figsize, forward=True)
+            except Exception:
+                try:
+                    fig_obj.set_size_inches(figsize)
+                except Exception:
+                    pass
+            try:
+                fig_obj.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            except Exception:
+                pass
+            fig_obj.savefig(outname, dpi=1200)
             logger.info("Saved map to %s", outname)
         except Exception as exc:
             logger.error("Failed to save map to %s: %s", outname, exc)
