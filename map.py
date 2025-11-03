@@ -359,7 +359,8 @@ def plot_stops_on_ax(
 
     used_bboxes = []
     offsets = [(4, 4), (-4, 4), (4, -4), (-4, -4), (8, 0), (-8, 0), (0, 8), (0, -8)]
-    angles = [0, -45, 45, -90, 90]
+    # try rotated labels before falling back to non-rotated (0). Prioritize gentler tilts first.
+    angles = [-30, 30, -45, 45, -90, 90, 0]
 
     for idx, row in gdf_stops.iterrows():
         pt = row.geometry
@@ -545,19 +546,171 @@ def main():
 
         ax = gdf_3857.plot(facecolor="none", edgecolor=args.color, linewidth=args.linewidth, figsize=figsize)
         ax.set_axis_off()
+
         logger.info("Generating map for %s -> %s...", route[1], route[2])
-        zoom_param = args.zoom if args.zoom >= 0 else "auto"
+
+        target_dpi = 300
+        target_px_w = int(figsize[0] * target_dpi)
+        target_px_h = int(figsize[1] * target_dpi)
+
         try:
-            logger.debug("Adding basemap with zoom=%s and provider=BasemapAT", zoom_param)
-            # ax is plotted in Web Mercator; request basemap in EPSG:3857
-            cx.add_basemap(ax=ax, crs="EPSG:3857", source=cx.providers.BasemapAT.basemap, zoom=zoom_param)
-        except Exception as exc:
-            logger.warning("Failed to add basemap: %s", exc)
+            provider = cx.providers.BasemapAT.basemap
+        except Exception:
+            provider = getattr(cx.providers, "Stamen", None)
+            if provider is not None and hasattr(provider, "TonerLite"):
+                provider = provider.TonerLite
+            else:
+                provider = list(cx.providers.values())[0]
+
+        if args.zoom >= 0:
+            try_zoom = int(args.zoom)
+        else:
+            R = 6378137.0
+            bbox_w_m = max(bbox_w, 1.0)
+            est = target_px_w * 2 * math.pi * R / (256.0 * bbox_w_m)
+            if est <= 0:
+                try_zoom = 0
+            else:
+                try_zoom = max(0, int(math.floor(math.log2(est))))
+            try_zoom = max(0, min(19, try_zoom))
+
+        img = None
+        img_ext = None
+        # For each zoom attempt, fetch tiles and expand the bbox in the shorter
+        # direction until the returned image aspect >= desired figure aspect.
+        for z in range(try_zoom, min(19, try_zoom + 3) + 1):
+            logger.debug("Attempting basemap fetch at zoom=%d", z)
+            # start with the route bbox
+            cur_minx, cur_miny, cur_maxx, cur_maxy = minx, miny, maxx, maxy
+            best_arr = None
+            best_ext = None
+            # allow a few expansion iterations to pull additional tiles in the short direction
+            for expand_iter in range(6):
+                try:
+                    arr, arr_ext = cx.bounds2img(cur_minx, cur_miny, cur_maxx, cur_maxy, z, source=provider)
+                except Exception as exc:
+                    logger.debug("bounds2img failed at zoom %d expand_iter %d: %s", z, expand_iter, exc)
+                    arr = None
+                    arr_ext = None
+                if arr is None:
+                    break
+                h, w = arr.shape[0], arr.shape[1]
+                img_aspect = (w / h) if h > 0 else 1.0
+                logger.debug("Got basemap image %dx%d (aspect %.3f) at zoom %d (iter %d)", w, h, img_aspect, z, expand_iter)
+                # keep the highest resolution image seen so far
+                if best_arr is None or (w > best_arr.shape[1] and h > best_arr.shape[0]):
+                    best_arr = arr
+                    best_ext = arr_ext
+                # if this image already matches/exceeds desired figure aspect and pixels, pick it
+                if img_aspect >= fig_aspect and w >= target_px_w and h >= target_px_h:
+                    img = arr
+                    img_ext = arr_ext
+                    logger.info("Selected basemap zoom=%d (image %dx%d) after %d expansions", z, w, h, expand_iter)
+                    break
+                # If image aspect is less than desired, expand width (short direction)
+                if img_aspect < fig_aspect:
+                    need_factor = fig_aspect / max(img_aspect, 1e-6)
+                    cur_width = cur_maxx - cur_minx
+                    new_width = cur_width * need_factor
+                    extra = (new_width - cur_width) / 2.0
+                    cur_minx -= extra
+                    cur_maxx += extra
+                    logger.debug("Expanding bbox width by factor %.3f (iter %d)", need_factor, expand_iter)
+                    continue
+                # If image aspect is greater than desired, expand height
+                if img_aspect > fig_aspect:
+                    need_factor = img_aspect / max(fig_aspect, 1e-6)
+                    cur_height = cur_maxy - cur_miny
+                    new_height = cur_height * need_factor
+                    extra = (new_height - cur_height) / 2.0
+                    cur_miny -= extra
+                    cur_maxy += extra
+                    logger.debug("Expanding bbox height by factor %.3f (iter %d)", need_factor, expand_iter)
+                    continue
+                # fallback small expansion to try to increase resolution
+                cur_minx -= 0.05 * (cur_maxx - cur_minx)
+                cur_maxx += 0.05 * (cur_maxx - cur_minx)
+                cur_miny -= 0.05 * (cur_maxy - cur_miny)
+                cur_maxy += 0.05 * (cur_maxy - cur_miny)
+            # if we did not find ideal arr, use the best_arr we collected
+            if img is None and best_arr is not None:
+                img = best_arr
+                img_ext = best_ext
+                logger.info("Using best-available basemap at zoom=%d (image %dx%d)", z, img.shape[1], img.shape[0])
+            if img is not None:
+                break
+
+        if img is not None and img_ext is not None:
+            try:
+                # Crop the fetched tile image to the exact figure aspect centered on the route bbox.
+                west, south, east, north = img_ext
+                w_px = img.shape[1]
+                h_px = img.shape[0]
+
+                # desired bbox centered on original route center with figure aspect
+                cx0 = 0.5 * (minx + maxx)
+                cy0 = 0.5 * (miny + maxy)
+                desired_w = bbox_h * fig_aspect
+                desired_h = bbox_w / fig_aspect
+                # ensure desired dims are not larger than available extent; clamp if necessary
+                avail_w = east - west
+                avail_h = north - south
+                if desired_w > avail_w:
+                    desired_w = avail_w
+                    desired_h = desired_w / fig_aspect
+                if desired_h > avail_h:
+                    desired_h = avail_h
+                    desired_w = desired_h * fig_aspect
+
+                des_minx = cx0 - desired_w / 2.0
+                des_maxx = cx0 + desired_w / 2.0
+                des_miny = cy0 - desired_h / 2.0
+                des_maxy = cy0 + desired_h / 2.0
+
+                # Map desired bbox to pixel coordinates in the fetched image
+                def x_to_px(x):
+                    return int(round((x - west) / (east - west) * (w_px - 1)))
+
+                def y_to_px(y):
+                    # origin='upper' in imshow: y pixel 0 corresponds to north
+                    return int(round((north - y) / (north - south) * (h_px - 1)))
+
+                lx = max(0, x_to_px(des_minx))
+                rx = min(w_px, x_to_px(des_maxx) + 1)
+                ty = max(0, y_to_px(des_maxy))
+                by = min(h_px, y_to_px(des_miny) + 1)
+
+                # ensure indices valid
+                if rx > lx and by > ty:
+                    cropped = img[ty:by, lx:rx].copy()
+                    ax.imshow(cropped, extent=(des_minx, des_maxx, des_miny, des_maxy), origin="upper", interpolation="nearest")
+                else:
+                    # fallback to showing full image extent
+                    ax.imshow(img, extent=(west, east, south, north), origin="upper", interpolation="nearest")
+            except Exception:
+                try:
+                    ax.imshow(img, extent=(minx, maxx, miny, maxy), origin="upper", interpolation="nearest")
+                except Exception:
+                    logger.debug("ax.imshow failed for basemap image, falling back to add_basemap")
+                    try:
+                        cx.add_basemap(ax=ax, crs="EPSG:3857", source=provider, zoom=try_zoom)
+                    except Exception as exc:
+                        logger.warning("Failed to add basemap fallback: %s", exc)
+        else:
+            try:
+                cx.add_basemap(ax=ax, crs="EPSG:3857", source=provider, zoom=try_zoom)
+            except Exception as exc:
+                logger.warning("Failed to add basemap fallback: %s", exc)
+
+        try:
+            gdf_3857.plot(ax=ax, facecolor="none", edgecolor=args.color, linewidth=args.linewidth)
+        except Exception:
+            logger.debug("Failed to plot route geometry on top of basemap")
         outname = f"{route[1].replace('/', '')} - {route[2].replace('/', '')} Map.png"
         if args.plot_stops:
             logger.info("Plotting stops for route %s -> %s", route[1], route[2])
             try:
-                n = plot_stops_on_ax(ax, sid, trips, stops_index, stop_times_index, line_color=args.color)
+                n = plot_stops_on_ax(ax, sid, trips, stops_index, stop_times_index, line_color=args.color, target_crs="EPSG:3857")
                 logger.info("Plotted %d stops for route", n)
             except Exception as exc:
                 logger.warning("Exception while plotting stops: %s", exc)
@@ -577,7 +730,7 @@ def main():
                 fig_obj.subplots_adjust(left=0, right=1, top=1, bottom=0)
             except Exception:
                 pass
-            fig_obj.savefig(outname, dpi=1200)
+            fig_obj.savefig(outname, dpi=target_dpi)
             logger.info("Saved map to %s", outname)
         except Exception as exc:
             logger.error("Failed to save map to %s: %s", outname, exc)
