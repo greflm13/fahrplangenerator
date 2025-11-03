@@ -160,7 +160,6 @@ def plot_stops_on_ax(
 
     Returns the number of plotted stops.
     """
-    # derive stop color from line color (darker)
     try:
         rgb = mcolors.to_rgb(line_color)
         stop_rgb = tuple(max(0.0, c * 0.5) for c in rgb)
@@ -169,7 +168,6 @@ def plot_stops_on_ax(
         # fallback to red
         stop_color = (1.0, 0.0, 0.0)
 
-    # find trip_ids that reference this shape_id
     trip_ids = [t["trip_id"] for t in trips if t.get("shape_id") == sid and t.get("trip_id")]
     stop_ids = set()
     for tid in trip_ids:
@@ -205,7 +203,6 @@ def plot_stops_on_ax(
         logger.warning("Failed to plot stops GeoDataFrame: %s", exc)
         return 0
 
-    # annotate stop names next to each point
     for idx, row in gdf_stops.iterrows():
         pt = row.geometry
         name = row.get("stop_name", "")
@@ -225,13 +222,11 @@ def plot_stops_on_ax(
                 bbox={"boxstyle": "round,pad=0.2", "facecolor": "white", "edgecolor": "black", "linewidth": 0.4, "alpha": 0.9},
                 clip_on=False,
             )
-            # Add a slight stroke to improve legibility on variable backgrounds
             try:
                 txt.set_path_effects([pe.withStroke(linewidth=0.5, foreground="white")])
             except Exception:
                 pass
         except Exception:
-            # annotation can fail in some backends; ignore gracefully
             continue
 
     return len(gdf_stops)
@@ -286,7 +281,6 @@ def main():
     shapedict = build_shapedict(shapes, stopshash)
     routes = build_routes(trips, shapedict)
 
-    # Index stops & stop_times for plotting
     stops_index = build_stops_index(stops)
     stop_times_index = build_stop_times_index(stop_times)
 
@@ -298,7 +292,6 @@ def main():
         if choice is None:
             logger.info("No route selected, exiting.")
             break
-        # find index of chosen route
         idx = next((i for i, route in enumerate(routes) if choice == f"{route[1]} - {route[2]}"), None)
         if idx is None:
             logger.warning("Selected choice not found in routes: %s", choice)
@@ -312,27 +305,25 @@ def main():
         ax = gdf.plot(facecolor="none", edgecolor=args.color, linewidth=args.linewidth, figsize=(10, 10))
         ax.set_axis_off()
         logger.info("Generating map for %s -> %s...", route[1], route[2])
-        # Add basemap and handle potential provider issues gracefully
         zoom_param = args.zoom if args.zoom >= 0 else "auto"
         try:
             logger.debug("Adding basemap with zoom=%s and provider=BasemapAT", zoom_param)
             cx.add_basemap(ax=ax, crs="EPSG:4326", source=cx.providers.BasemapAT.basemap, zoom=zoom_param)
-        except Exception as exc:  # pragma: no cover - defensive logging
+        except Exception as exc:
             logger.warning("Failed to add basemap: %s", exc)
         outname = f"{route[1].replace('/', '')} - {route[2].replace('/', '')}_map.png"
-        # If requested, plot stops for this route
         if args.plot_stops:
             logger.info("Plotting stops for route %s -> %s", route[1], route[2])
             try:
                 n = plot_stops_on_ax(ax, sid, trips, stops_index, stop_times_index, line_color=args.color)
                 logger.info("Plotted %d stops for route", n)
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception as exc:
                 logger.warning("Exception while plotting stops: %s", exc)
 
         try:
             plt.savefig(outname, dpi=1200, bbox_inches="tight", pad_inches=1)
             logger.info("Saved map to %s", outname)
-        except Exception as exc:  # pragma: no cover - I/O error handling
+        except Exception as exc:
             logger.error("Failed to save map to %s: %s", outname, exc)
         plt.show()
 
