@@ -2,7 +2,6 @@ import os
 import csv
 import math
 import argparse
-from functools import cache
 from typing import Dict, List, Tuple, Optional, Union
 
 import questionary
@@ -12,8 +11,27 @@ import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
 import geopandas as gpd
 from shapely.geometry import shape, Point
+import pickle
+import hashlib
+import numpy as np
+
+try:
+    import pandas as pd
+except Exception:
+    pd = None
+try:
+    from scipy.spatial import cKDTree as KDTree
+except Exception:
+    KDTree = None
 
 from modules.logger import logger
+
+if __package__ is None:
+    PACKAGE = ""
+else:
+    PACKAGE = __package__
+SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
+
 
 logger.level = 10
 
@@ -46,24 +64,106 @@ def compare_coords(lat1: Union[str, float], lon1: Union[str, float], lat2: Union
     return math.isclose(float(lat1), float(lat2), abs_tol=tolerance) and math.isclose(float(lon1), float(lon2), abs_tol=tolerance)
 
 
-@cache
-def find_stop_by_coords(stopshash: str, lat: str, lon: str, max_tolerance: float = 1e-1) -> Optional[str]:
-    """Find a stop name matching given coordinates.
+def compute_cache_key(file_paths: List[str]) -> str:
+    """Compute a cache key based on file paths and their mtimes/sizes."""
+    h = hashlib.sha256()
+    for p in sorted(file_paths):
+        try:
+            stat = os.stat(p)
+            h.update(p.encode())
+            h.update(str(stat.st_mtime_ns).encode())
+            h.update(str(stat.st_size).encode())
+        except Exception:
+            h.update(p.encode())
+    return h.hexdigest()
 
-    The original algorithm progressively increased tolerance until a match was found. To avoid
-    potential infinite loops, we cap the tolerance and return None if no match is found.
+
+def get_cache_path(key: str) -> str:
+    cache_dir = os.path.join(SCRIPTDIR, "cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    return os.path.join(cache_dir, f"stop_index_{key}.pkl")
+
+
+def build_spatial_index(stops: List[Dict]) -> Dict:
+    """Build KDTree and auxiliary arrays from stops list.
+
+    Returns a dict: { 'kdtree': KDTree, 'coords': np.ndarray, 'names': List[str], 'stop_ids': List[str] }
     """
-    stops = stopshash.split("$")
-    tolerance = 1e-9
-    while tolerance <= max_tolerance:
-        for stop in stops:
-            lat_s, lon_s, name_s = stop.split("%")
-            if compare_coords(lat_s, lon_s, lat, lon, tolerance):
-                logger.debug("Matched stop '%s' for coords (%s,%s) with tolerance %s", name_s, lat, lon, tolerance)
-                return name_s
-        tolerance *= 10
-    logger.debug("No stop found for coords (%s, %s) within tolerance %s", lat, lon, max_tolerance)
+    coords = []
+    names = []
+    stop_ids = []
+    for s in stops:
+        lat = s.get("stop_lat")
+        lon = s.get("stop_lon")
+        sid = s.get("stop_id")
+        name = s.get("stop_name", "")
+        try:
+            latf = float(lat)
+            lonf = float(lon)
+        except Exception:
+            continue
+        coords.append((latf, lonf))
+        names.append(name)
+        stop_ids.append(sid)
+    if not coords:
+        return {"kdtree": None, "coords": np.array([]), "names": [], "stop_ids": []}
+    arr = np.array(coords)
+    if KDTree is None:
+        logger.warning("scipy not available; spatial index disabled")
+        return {"kdtree": None, "coords": arr, "names": names, "stop_ids": stop_ids}
+    tree = KDTree(arr)
+    return {"kdtree": tree, "coords": arr, "names": names, "stop_ids": stop_ids}
+
+
+def load_or_build_spatial_index(stops: List[Dict], cache_key: Optional[str] = None) -> Dict:
+    """Load spatial index from cache if available, otherwise build and cache it."""
+    if cache_key:
+        cache_path = get_cache_path(cache_key)
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "rb") as f:
+                    idx = pickle.load(f)
+                    logger.info("Loaded spatial index from cache %s", cache_path)
+                    return idx
+            except Exception:
+                logger.debug("Failed to load cache, rebuilding")
+    idx = build_spatial_index(stops)
+    if cache_key:
+        try:
+            with open(get_cache_path(cache_key), "wb") as f:
+                pickle.dump(idx, f)
+                logger.info("Cached spatial index to %s", get_cache_path(cache_key))
+        except Exception as exc:
+            logger.debug("Failed to write spatial index cache: %s", exc)
+    return idx
+
+
+def find_nearest_stop(spatial_index: Dict, lat: str, lon: str) -> Optional[str]:
+    """Find nearest stop name using KDTree spatial index. Returns None if not found."""
+    try:
+        latf = float(lat)
+        lonf = float(lon)
+    except Exception:
+        return None
+    tree = spatial_index.get("kdtree")
+    if tree is None:
+        names = spatial_index.get("names", [])
+        coords = spatial_index.get("coords", np.array([]))
+        if coords.size == 0:
+            return None
+        d2 = np.sum((coords - np.array([latf, lonf])) ** 2, axis=1)
+        idx = int(np.argmin(d2))
+        return names[idx]
+    dist, idx = tree.query([latf, lonf])
+    names = spatial_index.get("names", [])
+    if idx < len(names):
+        return names[int(idx)]
     return None
+
+
+def find_stop_by_coords(spatial_index: Dict, lat: str, lon: str) -> Optional[str]:
+    """Compatibility wrapper for older calls: find nearest stop using spatial index."""
+    return find_nearest_stop(spatial_index, lat, lon)
 
 
 def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict]]:
@@ -81,32 +181,72 @@ def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List
             stops_path = os.path.join(folder, "stops.txt")
             logger.info("Loading GTFS from %s", folder)
             if os.path.exists(shapes_path):
-                with open(shapes_path, mode="r", encoding="utf-8-sig") as f:
-                    before = len(shapes)
-                    shapes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                    logger.debug("Loaded %d shapes from %s", len(shapes) - before, shapes_path)
+                before = len(shapes)
+                if pd is not None:
+                    try:
+                        df = pd.read_csv(shapes_path, dtype=str)
+                        df = df.fillna("")
+                        shapes.extend(df.to_dict(orient="records"))
+                    except Exception as exc:
+                        logger.debug("pandas failed to read %s: %s; falling back to csv", shapes_path, exc)
+                        with open(shapes_path, mode="r", encoding="utf-8-sig") as f:
+                            shapes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+                else:
+                    with open(shapes_path, mode="r", encoding="utf-8-sig") as f:
+                        shapes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+                logger.debug("Loaded %d shapes from %s", len(shapes) - before, shapes_path)
             else:
                 logger.debug("No shapes.txt in %s", folder)
             if os.path.exists(trips_path):
-                with open(trips_path, mode="r", encoding="utf-8-sig") as f:
-                    before = len(trips)
-                    trips.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                    logger.debug("Loaded %d trips from %s", len(trips) - before, trips_path)
+                before = len(trips)
+                if pd is not None:
+                    try:
+                        df = pd.read_csv(trips_path, dtype=str)
+                        df = df.fillna("")
+                        trips.extend(df.to_dict(orient="records"))
+                    except Exception as exc:
+                        logger.debug("pandas failed to read %s: %s; falling back to csv", trips_path, exc)
+                        with open(trips_path, mode="r", encoding="utf-8-sig") as f:
+                            trips.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+                else:
+                    with open(trips_path, mode="r", encoding="utf-8-sig") as f:
+                        trips.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+                logger.debug("Loaded %d trips from %s", len(trips) - before, trips_path)
             else:
                 logger.debug("No trips.txt in %s", folder)
             if os.path.exists(stops_path):
-                with open(stops_path, mode="r", encoding="utf-8-sig") as f:
-                    before = len(stops)
-                    stops.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                    logger.debug("Loaded %d stops from %s", len(stops) - before, stops_path)
+                before = len(stops)
+                if pd is not None:
+                    try:
+                        df = pd.read_csv(stops_path, dtype=str)
+                        df = df.fillna("")
+                        stops.extend(df.to_dict(orient="records"))
+                    except Exception as exc:
+                        logger.debug("pandas failed to read %s: %s; falling back to csv", stops_path, exc)
+                        with open(stops_path, mode="r", encoding="utf-8-sig") as f:
+                            stops.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+                else:
+                    with open(stops_path, mode="r", encoding="utf-8-sig") as f:
+                        stops.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+                logger.debug("Loaded %d stops from %s", len(stops) - before, stops_path)
             else:
                 logger.debug("No stops.txt in %s", folder)
             stop_times_path = os.path.join(folder, "stop_times.txt")
             if os.path.exists(stop_times_path):
-                with open(stop_times_path, mode="r", encoding="utf-8-sig") as f:
-                    before = len(stop_times)
-                    stop_times.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                    logger.debug("Loaded %d stop_times from %s", len(stop_times) - before, stop_times_path)
+                before = len(stop_times)
+                if pd is not None:
+                    try:
+                        df = pd.read_csv(stop_times_path, dtype=str)
+                        df = df.fillna("")
+                        stop_times.extend(df.to_dict(orient="records"))
+                    except Exception as exc:
+                        logger.debug("pandas failed to read %s: %s; falling back to csv", stop_times_path, exc)
+                        with open(stop_times_path, mode="r", encoding="utf-8-sig") as f:
+                            stop_times.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+                else:
+                    with open(stop_times_path, mode="r", encoding="utf-8-sig") as f:
+                        stop_times.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
+                logger.debug("Loaded %d stop_times from %s", len(stop_times) - before, stop_times_path)
             else:
                 logger.debug("No stop_times.txt in %s", folder)
     return shapes, trips, stops, stop_times
@@ -165,7 +305,6 @@ def plot_stops_on_ax(
         stop_rgb = tuple(max(0.0, c * 0.5) for c in rgb)
         stop_color = stop_rgb
     except Exception:
-        # fallback to red
         stop_color = (1.0, 0.0, 0.0)
 
     trip_ids = [t["trip_id"] for t in trips if t.get("shape_id") == sid and t.get("trip_id")]
@@ -232,7 +371,7 @@ def plot_stops_on_ax(
     return len(gdf_stops)
 
 
-def build_shapedict(shapes: List[Dict], stopshash: str) -> Dict[str, Dict]:
+def build_shapedict(shapes: List[Dict], stop_index: Dict[int, Dict[Tuple[float, float], List[str]]]) -> Dict[str, Dict]:
     """Build a mapping shape_id -> {start_stop, end_stop, points}.
 
     Uses find_stop_by_coords but tolerates missing matches.
@@ -245,15 +384,15 @@ def build_shapedict(shapes: List[Dict], stopshash: str) -> Dict[str, Dict]:
             logger.debug("Processing shape ID: %s", sid)
             shapedict[sid] = {"start_stop": None, "end_stop": None, "points": []}
         if shapeline.get("shape_pt_sequence") == "1":
-            name = find_stop_by_coords(stopshash, shapeline["shape_pt_lat"], shapeline["shape_pt_lon"]) or ""
+            name = find_stop_by_coords(stop_index, shapeline["shape_pt_lat"], shapeline["shape_pt_lon"]) or ""
             shapedict[sid]["start_stop"] = name
         shapedict[sid]["points"].append([shapeline["shape_pt_lon"], shapeline["shape_pt_lat"]])
 
     logger.info("Associating end stops with shapes...")
-    for key, shap in shapedict.items():
+    for _, shap in shapedict.items():
         if not shap["end_stop"] and shap["points"]:
             last_point = shap["points"][-1]
-            name = find_stop_by_coords(stopshash, last_point[1], last_point[0]) or ""
+            name = find_stop_by_coords(stop_index, last_point[1], last_point[0]) or ""
             shap["end_stop"] = name
     return shapedict
 
@@ -277,8 +416,10 @@ def main():
     shapes, trips, stops, stop_times = load_gtfs(args.gtfs)
     logger.info("Loaded %d points, %d trips, %d stops and %d stop_times from GTFS data.", len(shapes), len(trips), len(stops), len(stop_times))
 
-    stopshash = build_stop_hash(stops)
-    shapedict = build_shapedict(shapes, stopshash)
+    stops_paths = [os.path.join(folder, "stops.txt") for folder in args.gtfs if os.path.exists(os.path.join(folder, "stops.txt"))]
+    cache_key = compute_cache_key(stops_paths) if stops_paths else None
+    spatial_index = load_or_build_spatial_index(stops, cache_key)
+    shapedict = build_shapedict(shapes, spatial_index)
     routes = build_routes(trips, shapedict)
 
     stops_index = build_stops_index(stops)
@@ -321,7 +462,7 @@ def main():
                 logger.warning("Exception while plotting stops: %s", exc)
 
         try:
-            plt.savefig(outname, dpi=1200, bbox_inches="tight", pad_inches=1)
+            plt.savefig(outname, dpi=1200, bbox_inches="tight", pad_inches=0)
             logger.info("Saved map to %s", outname)
         except Exception as exc:
             logger.error("Failed to save map to %s: %s", outname, exc)
