@@ -61,12 +61,36 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--map-provider",
         type=str,
-        choices=["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM"],
+        choices=[
+            "BasemapAT",
+            "OPNVKarte",
+            "OSM",
+            "OSMDE",
+            "ORM",
+            "OTM",
+            "UN",
+            "SAT",
+        ],
         default="BasemapAT",
         help="Map provider for the basemap (default: BasemapAT)",
         dest="map_provider",
     )
     return parser.parse_args()
+
+
+def get_provider_source(provider_name: str) -> TileProvider:
+    """Get the contextily provider source based on the provider name."""
+    provider_map = {
+        "BasemapAT": cx.providers.BasemapAT.highdpi,
+        "OPNVKarte": cx.providers.OPNVKarte,
+        "OSM": cx.providers.OpenStreetMap.Mapnik,
+        "OSMDE": cx.providers.OpenStreetMap.DE,
+        "ORM": cx.providers.OpenRailwayMap,
+        "OTM": cx.providers.OpenTopoMap,
+        "UN": cx.providers.UN.ClearMap,
+        "SAT": cx.providers.Esri.WorldImagery,
+    }
+    return provider_map.get(provider_name, cx.providers.BasemapAT.highdpi)
 
 
 def compare_coords(lat1: Union[str, float], lon1: Union[str, float], lat2: Union[str, float], lon2: Union[str, float], tolerance: float = 1e-9) -> bool:
@@ -89,9 +113,26 @@ def compute_cache_key(file_paths: List[str]) -> str:
 
 
 def get_cache_path(key: str) -> str:
+    """Return a cache path for the given key.
+
+    This function historically returned a path for the stop index. It is
+    generalized to accept a key which should include a prefix identifying the
+    index kind (for example 'stop_index', 'shape_point_index', 'shapedict').
+    The caller can pass a key like 'stop_index_<hash>' or use the helper
+    callers below which provide consistent prefixes.
+    """
     cache_dir = os.path.join(SCRIPTDIR, "__pycache__", "spatial_index")
     os.makedirs(cache_dir, exist_ok=True)
-    return os.path.join(cache_dir, f"stop_index_{key}.pkl")
+    return os.path.join(cache_dir, f"{key}.pkl")
+
+
+def get_named_cache_path(kind: str, key: str) -> str:
+    """Helper to build a cache file path with a kind prefix.
+
+    Example: get_named_cache_path('stop_index', key) -> stop_index_<key>.pkl
+    """
+    safe_kind = kind.replace("/", "_")
+    return get_cache_path(f"{safe_kind}_{key}")
 
 
 def build_spatial_index(stops: List[Dict[str, str]]) -> Dict:
@@ -128,7 +169,7 @@ def build_spatial_index(stops: List[Dict[str, str]]) -> Dict:
 def load_or_build_spatial_index(stops: List[Dict], cache_key: Optional[str] = None) -> Dict:
     """Load spatial index from cache if available, otherwise build and cache it."""
     if cache_key:
-        cache_path = get_cache_path(cache_key)
+        cache_path = get_named_cache_path("stop_index", cache_key)
         if os.path.exists(cache_path):
             try:
                 with open(cache_path, "rb") as f:
@@ -140,12 +181,42 @@ def load_or_build_spatial_index(stops: List[Dict], cache_key: Optional[str] = No
     idx = build_spatial_index(stops)
     if cache_key:
         try:
-            with open(get_cache_path(cache_key), "wb") as f:
+            cache_path = get_named_cache_path("stop_index", cache_key)
+            with open(cache_path, "wb") as f:
                 pickle.dump(idx, f)
-                logger.info("Cached spatial index to %s", get_cache_path(cache_key))
+                logger.info("Cached spatial index to %s", cache_path)
         except Exception as exc:
             logger.debug("Failed to write spatial index cache: %s", exc)
     return idx
+
+
+def load_or_build_shapedict(shapes: List[Dict], stop_index: Dict, cache_key: Optional[str] = None) -> Dict[str, Dict]:
+    """Load shapedict from cache or build it.
+
+    The shapedict associates shape_id -> {start_stop, end_stop, points} and is
+    moderately expensive to compute for large shape files. We cache it using a
+    shapes/trips/stops-derived cache key.
+    """
+    if cache_key:
+        cache_path = get_named_cache_path("shapedict", cache_key)
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "rb") as f:
+                    sd = pickle.load(f)
+                    logger.info("Loaded shapedict from cache %s", cache_path)
+                    return sd
+            except Exception:
+                logger.debug("Failed to load shapedict cache, rebuilding")
+    sd = build_shapedict(shapes, stop_index)
+    if cache_key:
+        try:
+            cache_path = get_named_cache_path("shapedict", cache_key)
+            with open(cache_path, "wb") as f:
+                pickle.dump(sd, f)
+                logger.info("Cached shapedict to %s", cache_path)
+        except Exception as exc:
+            logger.debug("Failed to write shapedict cache: %s", exc)
+    return sd
 
 
 def find_nearest_stop(spatial_index: Dict, lat: str, lon: str) -> Optional[str]:
@@ -164,7 +235,7 @@ def find_nearest_stop(spatial_index: Dict, lat: str, lon: str) -> Optional[str]:
         d2 = np.sum((coords - np.array([latf, lonf])) ** 2, axis=1)
         idx = int(np.argmin(d2))
         return names[idx]
-    dist, idx = tree.query([latf, lonf])
+    _, idx = tree.query([latf, lonf])
     names = spatial_index.get("names", [])
     if idx < len(names):
         return names[int(idx)]
@@ -199,7 +270,7 @@ def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List
                 else:
                     with open(shapes_path, mode="r", encoding="utf-8-sig") as f:
                         shapes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                logger.debug("Loaded %d shapes from %s", len(shapes) - before, shapes_path)
+                logger.debug("Loaded %d points from %s", len(shapes) - before, shapes_path)
             else:
                 logger.debug("No shapes.txt in %s", folder)
             if os.path.exists(trips_path):
@@ -414,19 +485,6 @@ def build_routes(trips: List[Dict], shapedict: Dict[str, Dict]) -> List[Tuple[st
     return routes_list
 
 
-def get_provider_source(provider_name: str) -> TileProvider:
-    """Get the contextily provider source based on the provider name."""
-    provider_map = {
-        "BasemapAT": cx.providers.BasemapAT.basemap,
-        "OPNVKarte": cx.providers.OPNVKarte,
-        "OSM": cx.providers.OpenStreetMap.Mapnik,
-        "OSMDE": cx.providers.OpenStreetMap.DE,
-        "ORM": cx.providers.OpenRailwayMap,
-        "TomTom": cx.providers.TomTom.Hybrid,
-    }
-    return provider_map.get(provider_name, cx.providers.BasemapAT.basemap)
-
-
 def main():
     args = parse_args()
 
@@ -435,9 +493,16 @@ def main():
     logger.info("Loaded %d points, %d trips, %d stops and %d stop_times from GTFS data.", len(shapes), len(trips), len(stops), len(stop_times))
 
     stops_paths = [os.path.join(folder, "stops.txt") for folder in args.gtfs if os.path.exists(os.path.join(folder, "stops.txt"))]
-    cache_key = compute_cache_key(stops_paths) if stops_paths else None
-    spatial_index = load_or_build_spatial_index(stops, cache_key)
-    shapedict = build_shapedict(shapes, spatial_index)
+    shapes_paths = [os.path.join(folder, "shapes.txt") for folder in args.gtfs if os.path.exists(os.path.join(folder, "shapes.txt"))]
+    trips_paths = [os.path.join(folder, "trips.txt") for folder in args.gtfs if os.path.exists(os.path.join(folder, "trips.txt"))]
+
+    stop_cache_key = compute_cache_key(stops_paths) if stops_paths else None
+    spatial_index = load_or_build_spatial_index(stops, stop_cache_key)
+
+    combined_paths = sorted(set(shapes_paths + trips_paths + stops_paths))
+    shapes_cache_key = compute_cache_key(combined_paths) if combined_paths else None
+
+    shapedict = load_or_build_shapedict(shapes, spatial_index, shapes_cache_key)
     routes = build_routes(trips, shapedict)
 
     stops_index = build_stops_index(stops)
