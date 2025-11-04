@@ -9,9 +9,10 @@ import contextily as cx
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
-from matplotlib.figure import Figure
 import geopandas as gpd
 from shapely.geometry import shape, Point
+from matplotlib.axes import Axes
+from xyzservices import TileProvider
 import pickle
 import hashlib
 import numpy as np
@@ -55,9 +56,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-i", "--input", action="extend", nargs="+", required=True, help="Input directory(s) containing GTFS shapes.txt", dest="gtfs")
     parser.add_argument("-z", "--zoom", type=int, default=-1, help="Zoom level for the basemap", dest="zoom")
     parser.add_argument("-c", "--color", type=str, default="green", help="Color of the shapes on the map", dest="color")
-    parser.add_argument("-l", "--linewidth", type=float, default=2.0, help="Line width of the shapes on the map", dest="linewidth")
-    parser.add_argument("--label-rotation", type=int, default=30, help="Fixed rotation angle (degrees) to apply to all stop labels")
-    parser.add_argument("-s", "--stops", action="store_true", help="Plot stops along the selected route", dest="plot_stops")
+    parser.add_argument("-l", "--linewidth", type=float, default=None, help="Line width of the shapes on the map", dest="linewidth")
+    parser.add_argument("-s", "--stops", action="store_true", dest="plot_stops", help="Plot stops along the selected route")
+    parser.add_argument(
+        "--map-provider",
+        type=str,
+        choices=["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM"],
+        default="BasemapAT",
+        help="Map provider for the basemap (default: BasemapAT)",
+        dest="map_provider",
+    )
     return parser.parse_args()
 
 
@@ -81,12 +89,12 @@ def compute_cache_key(file_paths: List[str]) -> str:
 
 
 def get_cache_path(key: str) -> str:
-    cache_dir = os.path.join(SCRIPTDIR, "__pycache__")
+    cache_dir = os.path.join(SCRIPTDIR, "__pycache__", "spatial_index")
     os.makedirs(cache_dir, exist_ok=True)
     return os.path.join(cache_dir, f"stop_index_{key}.pkl")
 
 
-def build_spatial_index(stops: List[Dict]) -> Dict:
+def build_spatial_index(stops: List[Dict[str, str]]) -> Dict:
     """Build KDTree and auxiliary arrays from stops list.
 
     Returns a dict: { 'kdtree': KDTree, 'coords': np.ndarray, 'names': List[str], 'stop_ids': List[str] }
@@ -95,8 +103,8 @@ def build_spatial_index(stops: List[Dict]) -> Dict:
     names = []
     stop_ids = []
     for s in stops:
-        lat = s.get("stop_lat")
-        lon = s.get("stop_lon")
+        lat = s.get("stop_lat", "")
+        lon = s.get("stop_lon", "")
         sid = s.get("stop_id")
         name = s.get("stop_name", "")
         try:
@@ -161,11 +169,6 @@ def find_nearest_stop(spatial_index: Dict, lat: str, lon: str) -> Optional[str]:
     if idx < len(names):
         return names[int(idx)]
     return None
-
-
-def find_stop_by_coords(spatial_index: Dict, lat: str, lon: str) -> Optional[str]:
-    """Compatibility wrapper for older calls: find nearest stop using spatial index."""
-    return find_nearest_stop(spatial_index, lat, lon)
 
 
 def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict]]:
@@ -286,7 +289,7 @@ def build_stop_times_index(stop_times: List[Dict]) -> Dict[str, List[Dict]]:
 
 
 def plot_stops_on_ax(
-    ax,
+    ax: Axes,
     sid: str,
     trips: List[Dict],
     stops_index: Dict[str, Dict],
@@ -294,8 +297,6 @@ def plot_stops_on_ax(
     line_color: str = "green",
     marker_size: int = 30,
     label_fontsize: int = 7,
-    target_crs: Optional[str] = None,
-    label_rotation: int = 30,
 ) -> int:
     """Plot stops for a given shape_id onto the provided axes and annotate stop names.
 
@@ -340,109 +341,37 @@ def plot_stops_on_ax(
         return 0
 
     gdf_stops = gpd.GeoDataFrame(stop_rows, geometry=stop_points, crs="EPSG:4326")
-    if target_crs:
-        try:
-            gdf_stops = gdf_stops.to_crs(target_crs)
-        except Exception:
-            logger.debug("Failed to transform stops to %s, keeping original CRS", target_crs)
-
     try:
         gdf_stops.plot(ax=ax, color=stop_color, markersize=marker_size, zorder=5)
     except Exception as exc:
         logger.warning("Failed to plot stops GeoDataFrame: %s", exc)
         return 0
 
-    fig = ax.figure
-    try:
-        fig.canvas.draw()
-        renderer = fig.canvas.get_renderer()
-    except Exception:
-        renderer = None
-
-    used_bboxes = []
-    offsets = [(4, 4), (-4, 4), (4, -4), (-4, -4), (8, 0), (-8, 0), (0, 8), (0, -8)]
-    # Use a single fixed rotation for all labels so the map looks consistent.
-    # This rotation is tried first for each label; only if placement fails we
-    # reduce fontsize. Change this angle to taste (degrees).
-    fixed_angle = int(label_rotation)
-    angles = [fixed_angle]
-
-    for idx, row in gdf_stops.iterrows():
+    for _, row in gdf_stops.iterrows():
         pt = row.geometry
         name = row.get("stop_name", "")
         if not name:
             continue
-        fontsize = label_fontsize
-        placed = False
-
-        while fontsize >= 5 and not placed:
-            # Try the single fixed rotation with different offsets first.
-            for angle in angles:
-                for off in offsets:
-                    try:
-                        txt = ax.annotate(
-                            name,
-                            xy=(pt.x, pt.y),
-                            xytext=off,
-                            textcoords="offset points",
-                            fontsize=fontsize,
-                            color="black",
-                            ha="left",
-                            va="bottom",
-                            rotation=angle,
-                            rotation_mode="anchor",
-                            zorder=6,
-                            bbox={"boxstyle": "round,pad=0.2", "facecolor": "white", "edgecolor": "black", "linewidth": 0.4, "alpha": 0.9},
-                            clip_on=False,
-                        )
-                        try:
-                            txt.set_path_effects([pe.withStroke(linewidth=0.5, foreground="white")])
-                        except Exception:
-                            pass
-                        if renderer is None:
-                            placed = True
-                            break
-                        bbox = txt.get_window_extent(renderer)
-                        overlap = False
-                        for ub in used_bboxes:
-                            if ub is not None and bbox.overlaps(ub):
-                                overlap = True
-                                break
-                        if not overlap:
-                            used_bboxes.append(bbox)
-                            placed = True
-                            break
-                        else:
-                            txt.remove()
-                    except Exception:
-                        try:
-                            txt.remove()
-                        except Exception:
-                            pass
-                        continue
-                if placed:
-                    break
-            if not placed:
-                # only reduce fontsize after all offsets with the fixed rotation failed
-                fontsize -= 1
-
-        if not placed:
+        try:
+            txt = ax.annotate(
+                name,
+                xy=(pt.x, pt.y),
+                xytext=(4, 4),
+                textcoords="offset points",
+                fontsize=label_fontsize,
+                color="black",
+                ha="left",
+                va="bottom",
+                zorder=6,
+                bbox={"boxstyle": "round,pad=0.2", "facecolor": "white", "edgecolor": "black", "linewidth": 0.4, "alpha": 0.9},
+                clip_on=False,
+            )
             try:
-                ax.annotate(
-                    name,
-                    xy=(pt.x, pt.y),
-                    xytext=offsets[0],
-                    textcoords="offset points",
-                    fontsize=max(5, label_fontsize - 2),
-                    color="black",
-                    ha="left",
-                    va="bottom",
-                    zorder=6,
-                    bbox={"boxstyle": "round,pad=0.2", "facecolor": "white", "edgecolor": "black", "linewidth": 0.4, "alpha": 0.9},
-                    clip_on=False,
-                )
+                txt.set_path_effects([pe.withStroke(linewidth=0.5, foreground="white")])
             except Exception:
                 pass
+        except Exception:
+            continue
 
     return len(gdf_stops)
 
@@ -460,7 +389,7 @@ def build_shapedict(shapes: List[Dict], stop_index: Dict[int, Dict[Tuple[float, 
             logger.debug("Processing shape ID: %s", sid)
             shapedict[sid] = {"start_stop": None, "end_stop": None, "points": []}
         if shapeline.get("shape_pt_sequence") == "1":
-            name = find_stop_by_coords(stop_index, shapeline["shape_pt_lat"], shapeline["shape_pt_lon"]) or ""
+            name = find_nearest_stop(stop_index, shapeline["shape_pt_lat"], shapeline["shape_pt_lon"]) or ""
             shapedict[sid]["start_stop"] = name
         shapedict[sid]["points"].append([shapeline["shape_pt_lon"], shapeline["shape_pt_lat"]])
 
@@ -468,7 +397,7 @@ def build_shapedict(shapes: List[Dict], stop_index: Dict[int, Dict[Tuple[float, 
     for _, shap in shapedict.items():
         if not shap["end_stop"] and shap["points"]:
             last_point = shap["points"][-1]
-            name = find_stop_by_coords(stop_index, last_point[1], last_point[0]) or ""
+            name = find_nearest_stop(stop_index, last_point[1], last_point[0]) or ""
             shap["end_stop"] = name
     return shapedict
 
@@ -483,6 +412,19 @@ def build_routes(trips: List[Dict], shapedict: Dict[str, Dict]) -> List[Tuple[st
     routes_list = sorted(routes, key=lambda x: x[2])
     logger.info("Discovered %d routes", len(routes_list))
     return routes_list
+
+
+def get_provider_source(provider_name: str) -> TileProvider:
+    """Get the contextily provider source based on the provider name."""
+    provider_map = {
+        "BasemapAT": cx.providers.BasemapAT.basemap,
+        "OPNVKarte": cx.providers.OPNVKarte,
+        "OSM": cx.providers.OpenStreetMap.Mapnik,
+        "OSMDE": cx.providers.OpenStreetMap.DE,
+        "ORM": cx.providers.OpenRailwayMap,
+        "TomTom": cx.providers.TomTom.Hybrid,
+    }
+    return provider_map.get(provider_name, cx.providers.BasemapAT.basemap)
 
 
 def main():
@@ -518,244 +460,63 @@ def main():
         points = shapedict[sid]["points"]
         geodata.append(shape({"type": "LineString", "coordinates": points}))
 
-        unit = 10.0
-        default_portrait = (unit, unit * math.sqrt(2))
-        default_landscape = (unit * math.sqrt(2), unit)
-
         gdf = gpd.GeoDataFrame({"geometry": geodata}, crs="EPSG:4326")
-        try:
-            gdf_3857 = gdf.to_crs(epsg=3857)
-        except Exception:
-            gdf_3857 = gdf
-
-        minx, miny, maxx, maxy = gdf_3857.total_bounds
-        bbox_w = maxx - minx if maxx > minx else 1.0
-        bbox_h = maxy - miny if maxy > miny else 1.0
-
-        bbox_aspect = bbox_w / bbox_h
-        if bbox_aspect >= 1.0:
-            figsize = default_landscape
-            fig_aspect = figsize[0] / figsize[1]
+        gminx, gmaxx, gminy, gmaxy = gdf.total_bounds
+        gbox_w = gmaxx - gminx
+        gbox_h = gmaxy - gminy
+        gbox_aspect = gbox_w / gbox_h
+        if gbox_aspect >= 1.0:
+            figsize = (10 * math.sqrt(2), 10)
         else:
-            figsize = default_portrait
-            fig_aspect = figsize[0] / figsize[1]
+            figsize = (10, 10 * math.sqrt(2))
+        ax = gdf.plot(facecolor="none", edgecolor=args.color, linewidth=args.linewidth, figsize=figsize)
 
-        target_w = bbox_h * fig_aspect
-        target_h = bbox_w / fig_aspect
-        if target_w > bbox_w:
-            extra = (target_w - bbox_w) / 2.0
-            minx -= extra
-            maxx += extra
-        elif target_h > bbox_h:
-            extra = (target_h - bbox_h) / 2.0
-            miny -= extra
-            maxy += extra
-
-        # Create a fresh figure/axes sized to the target aspect. We'll render
-        # the basemap image to this axes and then plot the route on top. Using
-        # plt.subplots prevents GeoPandas from autoscaling the axes and
-        # collapsing the image/geometry into a tiny blob.
-        fig, ax = plt.subplots(figsize=figsize)
-        ax.set_axis_off()
-        ax.set_aspect("equal", adjustable="box")
-
-        logger.info("Generating map for %s -> %s...", route[1], route[2])
-
-        target_dpi = 300
-        target_px_w = int(figsize[0] * target_dpi)
-        target_px_h = int(figsize[1] * target_dpi)
-
-        try:
-            provider = cx.providers.BasemapAT.basemap
-        except Exception:
-            provider = getattr(cx.providers, "Stamen", None)
-            if provider is not None and hasattr(provider, "TonerLite"):
-                provider = provider.TonerLite
-            else:
-                provider = list(cx.providers.values())[0]
-
-        if args.zoom >= 0:
-            try_zoom = int(args.zoom)
-        else:
-            R = 6378137.0
-            bbox_w_m = max(bbox_w, 1.0)
-            est = target_px_w * 2 * math.pi * R / (256.0 * bbox_w_m)
-            if est <= 0:
-                try_zoom = 0
-            else:
-                try_zoom = max(0, int(math.floor(math.log2(est))))
-            try_zoom = max(0, min(19, try_zoom))
-
-        img = None
-        img_ext = None
-        # For each zoom attempt, fetch tiles and expand the bbox in the shorter
-        # direction until the returned image aspect >= desired figure aspect.
-        for z in range(try_zoom, min(19, try_zoom + 3) + 1):
-            logger.debug("Attempting basemap fetch at zoom=%d", z)
-            # start with the route bbox
-            cur_minx, cur_miny, cur_maxx, cur_maxy = minx, miny, maxx, maxy
-            best_arr = None
-            best_ext = None
-            # allow a few expansion iterations to pull additional tiles in the short direction
-            for expand_iter in range(6):
-                try:
-                    arr, arr_ext = cx.bounds2img(cur_minx, cur_miny, cur_maxx, cur_maxy, z, source=provider)
-                except Exception as exc:
-                    logger.debug("bounds2img failed at zoom %d expand_iter %d: %s", z, expand_iter, exc)
-                    arr = None
-                    arr_ext = None
-                if arr is None:
-                    break
-                h, w = arr.shape[0], arr.shape[1]
-                img_aspect = (w / h) if h > 0 else 1.0
-                logger.debug("Got basemap image %dx%d (aspect %.3f) at zoom %d (iter %d)", w, h, img_aspect, z, expand_iter)
-                # keep the highest resolution image seen so far
-                if best_arr is None or (w > best_arr.shape[1] and h > best_arr.shape[0]):
-                    best_arr = arr
-                    best_ext = arr_ext
-                # if this image already matches/exceeds desired figure aspect and pixels, pick it
-                if img_aspect >= fig_aspect and w >= target_px_w and h >= target_px_h:
-                    img = arr
-                    img_ext = arr_ext
-                    logger.info("Selected basemap zoom=%d (image %dx%d) after %d expansions", z, w, h, expand_iter)
-                    break
-                # If image aspect is less than desired, expand width (short direction)
-                if img_aspect < fig_aspect:
-                    need_factor = fig_aspect / max(img_aspect, 1e-6)
-                    cur_width = cur_maxx - cur_minx
-                    new_width = cur_width * need_factor
-                    extra = (new_width - cur_width) / 2.0
-                    cur_minx -= extra
-                    cur_maxx += extra
-                    logger.debug("Expanding bbox width by factor %.3f (iter %d)", need_factor, expand_iter)
-                    continue
-                # If image aspect is greater than desired, expand height
-                if img_aspect > fig_aspect:
-                    need_factor = img_aspect / max(fig_aspect, 1e-6)
-                    cur_height = cur_maxy - cur_miny
-                    new_height = cur_height * need_factor
-                    extra = (new_height - cur_height) / 2.0
-                    cur_miny -= extra
-                    cur_maxy += extra
-                    logger.debug("Expanding bbox height by factor %.3f (iter %d)", need_factor, expand_iter)
-                    continue
-                # fallback small expansion to try to increase resolution
-                cur_minx -= 0.05 * (cur_maxx - cur_minx)
-                cur_maxx += 0.05 * (cur_maxx - cur_minx)
-                cur_miny -= 0.05 * (cur_maxy - cur_miny)
-                cur_maxy += 0.05 * (cur_maxy - cur_miny)
-            # if we did not find ideal arr, use the best_arr we collected
-            if img is None and best_arr is not None:
-                img = best_arr
-                img_ext = best_ext
-                logger.info("Using best-available basemap at zoom=%d (image %dx%d)", z, img.shape[1], img.shape[0])
-            if img is not None:
-                break
-
-        # track final extent we'll use for plotting overlays
-        final_minx, final_miny, final_maxx, final_maxy = minx, miny, maxx, maxy
-
-        if img is not None and img_ext is not None:
-            try:
-                # Crop the fetched tile image to the exact figure aspect centered on the route bbox.
-                west, south, east, north = img_ext
-                w_px = img.shape[1]
-                h_px = img.shape[0]
-
-                # desired bbox centered on original route center with figure aspect
-                cx0 = 0.5 * (minx + maxx)
-                cy0 = 0.5 * (miny + maxy)
-                desired_w = bbox_h * fig_aspect
-                desired_h = bbox_w / fig_aspect
-                # ensure desired dims are not larger than available extent; clamp if necessary
-                avail_w = east - west
-                avail_h = north - south
-                if desired_w > avail_w:
-                    desired_w = avail_w
-                    desired_h = desired_w / fig_aspect
-                if desired_h > avail_h:
-                    desired_h = avail_h
-                    desired_w = desired_h * fig_aspect
-
-                des_minx = cx0 - desired_w / 2.0
-                des_maxx = cx0 + desired_w / 2.0
-                des_miny = cy0 - desired_h / 2.0
-                des_maxy = cy0 + desired_h / 2.0
-
-                # Map desired bbox to pixel coordinates in the fetched image
-                def x_to_px(x):
-                    return int(round((x - west) / (east - west) * (w_px - 1)))
-
-                def y_to_px(y):
-                    # origin='upper' in imshow: y pixel 0 corresponds to north
-                    return int(round((north - y) / (north - south) * (h_px - 1)))
-
-                lx = max(0, x_to_px(des_minx))
-                rx = min(w_px, x_to_px(des_maxx) + 1)
-                ty = max(0, y_to_px(des_maxy))
-                by = min(h_px, y_to_px(des_miny) + 1)
-
-                # ensure indices valid
-                if rx > lx and by > ty:
-                    cropped = img[ty:by, lx:rx].copy()
-                    ax.imshow(cropped, extent=(des_minx, des_maxx, des_miny, des_maxy), origin="lower", interpolation="nearest")
-                    final_minx, final_maxx, final_miny, final_maxy = des_minx, des_maxx, des_miny, des_maxy
-                else:
-                    # fallback to showing full image extent
-                    ax.imshow(img, extent=(west, east, south, north), origin="lower", interpolation="nearest")
-                    final_minx, final_maxx, final_miny, final_maxy = west, east, south, north
-            except Exception:
-                try:
-                    ax.imshow(img, extent=(minx, maxx, miny, maxy), origin="lower", interpolation="nearest")
-                    final_minx, final_maxx, final_miny, final_maxy = minx, maxx, miny, maxy
-                except Exception:
-                    logger.debug("ax.imshow failed for basemap image, falling back to add_basemap")
-                    try:
-                        cx.add_basemap(ax=ax, crs="EPSG:3857", source=provider, zoom=try_zoom)
-                    except Exception as exc:
-                        logger.warning("Failed to add basemap fallback: %s", exc)
-        else:
-            try:
-                cx.add_basemap(ax=ax, crs="EPSG:3857", source=provider, zoom=try_zoom)
-            except Exception as exc:
-                logger.warning("Failed to add basemap fallback: %s", exc)
-
-        # Ensure overlays are plotted in the same extent as the basemap image
-        try:
-            ax.set_xlim(final_minx, final_maxx)
-            ax.set_ylim(final_miny, final_maxy)
-        except Exception:
-            pass
-
-        try:
-            gdf_3857.plot(ax=ax, facecolor="none", edgecolor=args.color, linewidth=args.linewidth)
-        except Exception:
-            logger.debug("Failed to plot route geometry on top of basemap")
-        outname = f"{route[1].replace('/', '')} - {route[2].replace('/', '')} Map.png"
         if args.plot_stops:
             logger.info("Plotting stops for route %s -> %s", route[1], route[2])
             try:
-                n = plot_stops_on_ax(ax, sid, trips, stops_index, stop_times_index, line_color=args.color, target_crs="EPSG:3857", label_rotation=args.label_rotation)
+                n = plot_stops_on_ax(ax, sid, trips, stops_index, stop_times_index, line_color=args.color)
                 logger.info("Plotted %d stops for route", n)
             except Exception as exc:
                 logger.warning("Exception while plotting stops: %s", exc)
 
+        ax.set_axis_off()
+        minx, maxx = ax.get_xlim()
+        miny, maxy = ax.get_ylim()
+        bbox_w = maxx - minx
+        bbox_h = maxy - miny
+        bbox_aspect = bbox_w / bbox_h
+
+        if bbox_aspect >= 1.0:
+            target_aspect = math.sqrt(2)
+            target_ysize = bbox_w / target_aspect
+            increase_y = (target_ysize - bbox_h) / 2.0
+            ax.set_ylim(miny - increase_y, maxy + increase_y)
+        else:
+            target_aspect = 1.0 / math.sqrt(2)
+            target_xsize = bbox_h * target_aspect
+            increase_x = (target_xsize - bbox_w) / 2.0
+            ax.set_xlim(minx - increase_x, maxx + increase_x)
+
+        logger.info("Generating map for %s -> %s...", route[1], route[2])
+        zoom_param = args.zoom if args.zoom >= 0 else "auto"
+        done = False
+        while not done:
+            try:
+                logger.debug("Adding basemap with zoom=%s and provider=%s", zoom_param, args.map_provider)
+                cx.add_basemap(ax=ax, crs="EPSG:4326", source=get_provider_source(args.map_provider), zoom=zoom_param, reset_extent=True)
+                done = True
+            except Exception as exc:
+                logger.warning("Failed to add basemap: %s", exc)
+                if isinstance(zoom_param, int) and zoom_param > 0:
+                    zoom_param -= 1
+                    logger.info("Retrying with lower zoom level: %s", zoom_param)
+                else:
+                    logger.error("Cannot add basemap, giving up.")
+                    done = True
+        outname = f"{route[1].replace('/', '')} - {route[2].replace('/', '')} Map.png"
+
         try:
-            fig_obj = ax.figure
-            if not isinstance(fig_obj, Figure):
-                fig_obj = plt.gcf()
-            try:
-                fig_obj.set_size_inches(figsize, forward=True)
-            except Exception:
-                try:
-                    fig_obj.set_size_inches(figsize)
-                except Exception:
-                    pass
-            try:
-                fig_obj.subplots_adjust(left=0, right=1, top=1, bottom=0)
-            except Exception:
-                pass
-            fig_obj.savefig(outname, dpi=target_dpi)
+            plt.savefig(outname, dpi=1200, bbox_inches="tight", pad_inches=0)
             logger.info("Saved map to %s", outname)
         except Exception as exc:
             logger.error("Failed to save map to %s: %s", outname, exc)
