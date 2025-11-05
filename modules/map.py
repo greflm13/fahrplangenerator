@@ -116,7 +116,7 @@ def draw_map(
 
 def plot_stops_on_ax(
     ax: Axes,
-    stop_points: List,
+    stops: List,
     line_color: str,
     marker_size: int = 30,
     label_fontsize: int = 7,
@@ -136,9 +136,10 @@ def plot_stops_on_ax(
     except Exception:
         stop_color = (1.0, 0.0, 0.0)
 
-    stop_rows = [row._asdict() for row in stop_points[1]]
+    stop_rows = [row[1]._asdict() for row in stops]
+    stops_points = [row[0] for row in stops]
 
-    gdf_stops = gpd.GeoDataFrame(stop_rows, geometry=stop_points[0], crs="EPSG:4326")
+    gdf_stops = gpd.GeoDataFrame(stop_rows, geometry=stops_points, crs="EPSG:4326")
     try:
         gdf_stops.plot(ax=ax, color=stop_color, markersize=marker_size, zorder=5)
     except Exception as exc:
