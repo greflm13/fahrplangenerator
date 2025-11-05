@@ -4,6 +4,7 @@ import os
 import argparse
 import tempfile
 
+import PIL.Image
 import tqdm
 import requests
 import questionary
@@ -21,6 +22,7 @@ import modules.utils as utils
 from modules.logger import logger
 from modules.map import draw_map
 
+PIL.Image.MAX_IMAGE_PIXELS = 9331200000
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 pdfmetrics.registerFont(TTFont("header", "FiraSans-Black.ttf"))
@@ -420,55 +422,63 @@ def main():
     else:
         tmpfile = None
 
-    for line, dires in tqdm.tqdm(lines.items(), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True):
-        if args.color == "random":
-            color = utils.generate_contrasting_vibrant_color()
-        else:
-            color = args.color
-        if not pages.get(line, False):
-            pages[line] = {}
-        for k in dires.keys():
-            destlist = []
-            for time in mondict.get(line, satdict.get(line, sundict.get(line, {}))).get(k, satdict.get(line, {}).get(k, sundict.get(line, {}).get(k, {}))).values():
-                destlist.extend([t["dest"] for t in time])
-            dest = utils.most_frequent(destlist)
-            if dest != ourstop:
-                page = pages.get(line, {}).get(k, {})
-                if not isinstance(page, str):
-                    page = tempfile.mkstemp(suffix=".pdf")[1]
-                pages[line][k] = create_page(
-                    line,
-                    dest,
-                    ourstop,
-                    page,
-                    mondict.get(line, {}).get(k, {}),
-                    satdict.get(line, {}).get(k, {}),
-                    sundict.get(line, {}).get(k, {}),
-                    color,
-                    tmpfile,
-                )
-                if args.map:
-                    mappage = tempfile.mkstemp(suffix=".pdf")[1]
-                    pages[line][k + "map"] = draw_map(
-                        page=mappage,
-                        routes=utils.prepare_linedraw_info(shapedict, stop_times, ourtrips, selected_routes, stops, line, k, [stop["stop_id"] for stop in ourstops]),
-                        color=color,
-                        label_fontsize=8,
-                        label_rotation=45,
+
+    try:
+        tmpdir = tempfile.mkdtemp()
+        for line, dires in tqdm.tqdm(lines.items(), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True):
+            if args.color == "random":
+                color = utils.generate_contrasting_vibrant_color()
+            else:
+                color = args.color
+            if not pages.get(line, False):
+                pages[line] = {}
+            for k in dires.keys():
+                destlist = []
+                for time in mondict.get(line, satdict.get(line, sundict.get(line, {}))).get(k, satdict.get(line, {}).get(k, sundict.get(line, {}).get(k, {}))).values():
+                    destlist.extend([t["dest"] for t in time])
+                dest = utils.most_frequent(destlist)
+                if dest != ourstop:
+                    page = pages.get(line, {}).get(k, {})
+                    if not isinstance(page, str):
+                        page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
+                    pages[line][k] = create_page(
+                        line,
+                        dest,
+                        ourstop,
+                        page,
+                        mondict.get(line, {}).get(k, {}),
+                        satdict.get(line, {}).get(k, {}),
+                        sundict.get(line, {}).get(k, {}),
+                        color,
+                        tmpfile,
                     )
+                    if args.map:
+                        mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
+                        pages[line][k + "map"] = draw_map(
+                            page=mappage,
+                            stop=ourstop,
+                            logo=tmpfile,
+                            routes=utils.prepare_linedraw_info(shapedict, stop_times, ourtrips, selected_routes, stops, line, k, [stop["stop_id"] for stop in ourstops]),
+                            color=color,
+                            label_fontsize=6,
+                            label_rotation=15,
+                            tmpdir=tmpdir,
+                        )
 
-    pagelst: list[str] = []
-    for line in tqdm.tqdm(pages.values(), desc="Collecting pages", unit=" lines", ascii=True, dynamic_ncols=True):
-        for dire in line.values():
-            if dire is not None:
-                pagelst.append(dire)
+        pagelst: list[str] = []
+        for line in tqdm.tqdm(pages.values(), desc="Collecting pages", unit=" lines", ascii=True, dynamic_ncols=True):
+            for dire in line.values():
+                if dire is not None:
+                    pagelst.append(dire)
 
-    utils.create_merged_pdf(pagelst, args.output)
+        utils.create_merged_pdf(pagelst, args.output)
 
-    for line in pages.values():
-        for dire in line.values():
-            if dire is not None:
-                os.remove(dire)
+        for line in pages.values():
+            for dire in line.values():
+                if dire is not None:
+                    os.remove(dire)
+    finally:
+        os.removedirs(tmpdir)
 
 
 if __name__ == "__main__":

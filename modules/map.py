@@ -1,4 +1,6 @@
+import io
 import math
+import tempfile
 
 from typing import List, Dict
 
@@ -10,13 +12,21 @@ import matplotlib.patheffects as pe
 
 from matplotlib.axes import Axes
 from shapely.geometry import Point
+from reportlab.graphics import renderPDF
+from reportlab.pdfgen.canvas import Canvas
+from svglib.svglib import svg2rlg, Drawing
+from reportlab.lib import colors, pagesizes
+from reportlab.lib.utils import ImageReader
 from xyzservices import TileProvider, providers
 
+from modules.utils import scale
 from modules.logger import logger
 
 
 def draw_map(
     page: str,
+    stop: Dict[str, str],
+    logo,
     routes: Dict,
     color: str,
     label_fontsize: int,
@@ -24,6 +34,7 @@ def draw_map(
     zoom: int = -1,
     map_provider: str = "BasemapAT",
     padding: int = 10,
+    tmpdir: str = tempfile.gettempdir(),
 ) -> str | None:
     """Draw maps for selected routes."""
     ax = None
@@ -66,10 +77,12 @@ def draw_map(
         target_aspect = math.sqrt(2) * projection_aspect
         aspect_diff = bbox_aspect - target_aspect
         logger.debug("Wide bounding box: bbox_aspect=%.3f, target_aspect=%.3f, aspect_diff=%.3f", bbox_aspect, target_aspect, aspect_diff)
+        pagesize = pagesizes.landscape(pagesizes.A4)
     else:
         target_aspect = 1.0 / math.sqrt(2) * projection_aspect
         aspect_diff = bbox_aspect - target_aspect
         logger.debug("Tall bounding box: bbox_aspect=%.3f, target_aspect=%.3f, aspect_diff=%.3f", bbox_aspect, target_aspect, aspect_diff)
+        pagesize = pagesizes.portrait(pagesizes.A4)
     if aspect_diff < 0:
         # Need to increase width
         target_xsize = bbox_h * target_aspect
@@ -107,7 +120,30 @@ def draw_map(
                 done = True
 
     try:
-        plt.savefig(page, dpi=1200, bbox_inches="tight", pad_inches=0)
+        pdf = Canvas(page, pagesize=pagesize)
+        _, b = tempfile.mkstemp(suffix=".png", dir=tmpdir)
+        plt.savefig(b, dpi=1200, bbox_inches="tight", pad_inches=0)
+        image = ImageReader(b)
+        pdf.drawImage(image, x=0, y=30, width=1000, preserveAspectRatio=True)
+        if isinstance(logo, tempfile._TemporaryFileWrapper):
+            drawing = svg2rlg(logo.name)
+            if isinstance(drawing, Drawing):
+                drawing = scale(drawing, 0.5)
+                renderPDF.draw(drawing, pdf, 1041, 15)
+            else:
+                logger.warning("Logo is not a drawing")
+                pdf.setFont("logo", 20)
+                pdf.setFillColor(colors.black)
+                pdf.drawRightString(x=1108, y=23.5, text="</srgn>")
+        elif isinstance(logo, str):
+            pdf.setFont("logo", 20)
+            pdf.setFillColor(colors.black)
+            pdf.drawRightString(x=1108, y=23.5, text=logo)
+
+        pdf.setFont("foot", 17)
+        pdf.setFillColor(colors.black)
+        pdf.drawString(x=80, y=23.5, text=stop["stop_name"])
+        pdf.save()
         logger.info("Saved map to %s", page)
     except Exception as exc:
         logger.error("Failed to save map to %s: %s", page, exc)
