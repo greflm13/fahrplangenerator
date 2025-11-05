@@ -1,5 +1,4 @@
 import os
-import csv
 import math
 import argparse
 from typing import Dict, List, Tuple, Optional, Union
@@ -10,7 +9,6 @@ import hashlib
 import questionary
 
 import numpy as np
-import pandas as pd
 import contextily as cx
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -23,6 +21,7 @@ from shapely.geometry import shape, Point
 from xyzservices import TileProvider, providers
 
 from modules.logger import logger
+from modules.utils import load_gtfs
 
 if __package__ is None:
     PACKAGE = ""
@@ -244,7 +243,7 @@ def find_nearest_stop(spatial_index: Dict, lat: str, lon: str) -> Optional[str]:
     return None
 
 
-def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict]]:
+def load_gtfs_dirs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict]]:
     """Load shapes, trips and stops from given GTFS directories."""
     shapes: List[Dict] = []
     trips: List[Dict] = []
@@ -254,83 +253,13 @@ def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List
     for folder in dirs:
         logger.debug("Checking folder: %s", folder)
         if os.path.isdir(folder):
-            shapes_path = os.path.join(folder, "shapes.txt")
-            trips_path = os.path.join(folder, "trips.txt")
-            stops_path = os.path.join(folder, "stops.txt")
-            logger.info("Loading GTFS from %s", folder)
-            if os.path.exists(shapes_path):
-                before = len(shapes)
-                logger.debug("Loading shapes from %s", shapes_path)
-                if pd is not None:
-                    try:
-                        df = pd.read_csv(shapes_path, dtype=str)
-                        df = df.fillna("")
-                        shapes.extend(df.to_dict(orient="records"))
-                    except Exception as exc:
-                        logger.debug("pandas failed to read %s: %s; falling back to csv", shapes_path, exc)
-                        with open(shapes_path, mode="r", encoding="utf-8-sig") as f:
-                            shapes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                else:
-                    with open(shapes_path, mode="r", encoding="utf-8-sig") as f:
-                        shapes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                logger.debug("Loaded %d points from %s", len(shapes) - before, shapes_path)
-            else:
-                logger.debug("No shapes.txt in %s", folder)
-            if os.path.exists(trips_path):
-                before = len(trips)
-                logger.debug("Loading trips from %s", trips_path)
-                if pd is not None:
-                    try:
-                        df = pd.read_csv(trips_path, dtype=str)
-                        df = df.fillna("")
-                        trips.extend(df.to_dict(orient="records"))
-                    except Exception as exc:
-                        logger.debug("pandas failed to read %s: %s; falling back to csv", trips_path, exc)
-                        with open(trips_path, mode="r", encoding="utf-8-sig") as f:
-                            trips.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                else:
-                    with open(trips_path, mode="r", encoding="utf-8-sig") as f:
-                        trips.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                logger.debug("Loaded %d trips from %s", len(trips) - before, trips_path)
-            else:
-                logger.debug("No trips.txt in %s", folder)
-            if os.path.exists(stops_path):
-                before = len(stops)
-                logger.debug("Loading stops from %s", stops_path)
-                if pd is not None:
-                    try:
-                        df = pd.read_csv(stops_path, dtype=str)
-                        df = df.fillna("")
-                        stops.extend(df.to_dict(orient="records"))
-                    except Exception as exc:
-                        logger.debug("pandas failed to read %s: %s; falling back to csv", stops_path, exc)
-                        with open(stops_path, mode="r", encoding="utf-8-sig") as f:
-                            stops.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                else:
-                    with open(stops_path, mode="r", encoding="utf-8-sig") as f:
-                        stops.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                logger.debug("Loaded %d stops from %s", len(stops) - before, stops_path)
-            else:
-                logger.debug("No stops.txt in %s", folder)
-            stop_times_path = os.path.join(folder, "stop_times.txt")
-            if os.path.exists(stop_times_path):
-                before = len(stop_times)
-                logger.debug("Loading stop_times from %s", stop_times_path)
-                if pd is not None:
-                    try:
-                        df = pd.read_csv(stop_times_path, dtype=str)
-                        df = df.fillna("")
-                        stop_times.extend(df.to_dict(orient="records"))
-                    except Exception as exc:
-                        logger.debug("pandas failed to read %s: %s; falling back to csv", stop_times_path, exc)
-                        with open(stop_times_path, mode="r", encoding="utf-8-sig") as f:
-                            stop_times.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                else:
-                    with open(stop_times_path, mode="r", encoding="utf-8-sig") as f:
-                        stop_times.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-                logger.debug("Loaded %d stop_times from %s", len(stop_times) - before, stop_times_path)
-            else:
-                logger.debug("No stop_times.txt in %s", folder)
+            shapes.extend(load_gtfs(folder, "shapes"))
+            trips.extend(load_gtfs(folder, "trips"))
+            stops.extend(load_gtfs(folder, "stops"))
+            stop_times.extend(load_gtfs(folder, "stop_times"))
+        else:
+            logger.error("GTFS folder %s does not exist", folder)
+
     return shapes, trips, stops, stop_times
 
 
@@ -498,7 +427,7 @@ def main():
     args = parse_args()
 
     logger.info("Loading GTFS data...")
-    shapes, trips, stops, stop_times = load_gtfs(args.gtfs)
+    shapes, trips, stops, stop_times = load_gtfs_dirs(args.gtfs)
     logger.info("Loaded %d points, %d trips, %d stops and %d stop_times from GTFS data.", len(shapes), len(trips), len(stops), len(stop_times))
 
     stops_paths = [os.path.join(folder, "stops.txt") for folder in args.gtfs if os.path.exists(os.path.join(folder, "stops.txt"))]
@@ -596,7 +525,7 @@ def main():
         while not done:
             try:
                 logger.debug("Adding basemap with zoom=%s and provider=%s", zoom_param, args.map_provider)
-                cx.add_basemap(ax=ax, crs="EPSG:4326", source=get_provider_source(args.map_provider), zoom=zoom_param, reset_extent=True)
+                cx.add_basemap(ax=ax, crs="EPSG:4326", source=get_provider_source(args.map_provider), zoom=str(zoom_param), reset_extent=True)
                 done = True
             except Exception as exc:
                 logger.warning("Failed to add basemap: %s", exc)
