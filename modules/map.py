@@ -136,7 +136,7 @@ def plot_stops_on_ax(
     except Exception:
         stop_color = (1.0, 0.0, 0.0)
 
-    stop_rows = [row[1]._asdict() for row in stop_points]
+    stop_rows = [row._asdict() for row in stop_points[1]]
 
     gdf_stops = gpd.GeoDataFrame(stop_rows, geometry=stop_points[0], crs="EPSG:4326")
     try:
