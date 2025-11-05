@@ -102,7 +102,8 @@ def prepare_linedraw_info(
                                 for stop in tim
                             ]
                         )
-                        linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
+                        if len(geo) > 0:
+                            linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
                         break
     linedrawinfo["points"] = list(stop_points)
     return linedrawinfo
