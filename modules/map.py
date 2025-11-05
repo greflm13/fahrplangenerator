@@ -1,4 +1,4 @@
-import io
+import os
 import math
 import tempfile
 
@@ -29,11 +29,11 @@ def draw_map(
     logo,
     routes: Dict,
     color: str,
-    label_fontsize: int,
     label_rotation: int,
+    label_fontsize: int = 6,
     zoom: int = -1,
     map_provider: str = "BasemapAT",
-    padding: int = 10,
+    padding: int = 15,
     tmpdir: str = tempfile.gettempdir(),
 ) -> str | None:
     """Draw maps for selected routes."""
@@ -78,11 +78,13 @@ def draw_map(
         aspect_diff = bbox_aspect - target_aspect
         logger.debug("Wide bounding box: bbox_aspect=%.3f, target_aspect=%.3f, aspect_diff=%.3f", bbox_aspect, target_aspect, aspect_diff)
         pagesize = pagesizes.landscape(pagesizes.A4)
+        movey = 0
     else:
         target_aspect = 1.0 / math.sqrt(2) * projection_aspect
         aspect_diff = bbox_aspect - target_aspect
         logger.debug("Tall bounding box: bbox_aspect=%.3f, target_aspect=%.3f, aspect_diff=%.3f", bbox_aspect, target_aspect, aspect_diff)
         pagesize = pagesizes.portrait(pagesizes.A4)
+        movey = 840
     if aspect_diff < 0:
         # Need to increase width
         target_xsize = bbox_h * target_aspect
@@ -121,15 +123,16 @@ def draw_map(
 
     try:
         pdf = Canvas(page, pagesize=pagesize)
+        pdf.scale(pagesize[0] / 1188, pagesize[1] / (840 + movey))
         _, b = tempfile.mkstemp(suffix=".png", dir=tmpdir)
-        plt.savefig(b, dpi=1200, bbox_inches="tight", pad_inches=0)
+        plt.savefig(b, dpi=600, bbox_inches="tight", pad_inches=0)
         image = ImageReader(b)
-        pdf.drawImage(image, x=0, y=30, width=1000, preserveAspectRatio=True)
+        pdf.drawImage(image, x=50, y=60, width=1088, height=730 + movey, preserveAspectRatio=True)
         if isinstance(logo, tempfile._TemporaryFileWrapper):
             drawing = svg2rlg(logo.name)
             if isinstance(drawing, Drawing):
                 drawing = scale(drawing, 0.5)
-                renderPDF.draw(drawing, pdf, 1041, 15)
+                renderPDF.draw(drawing, pdf, x=1041, y=15)
             else:
                 logger.warning("Logo is not a drawing")
                 pdf.setFont("logo", 20)
@@ -144,6 +147,7 @@ def draw_map(
         pdf.setFillColor(colors.black)
         pdf.drawString(x=80, y=23.5, text=stop["stop_name"])
         pdf.save()
+        os.remove(b)
         logger.info("Saved map to %s", page)
     except Exception as exc:
         logger.error("Failed to save map to %s: %s", page, exc)

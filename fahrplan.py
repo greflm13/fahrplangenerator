@@ -30,8 +30,6 @@ pdfmetrics.registerFont(TTFont("hour", "FiraSans-Bold.ttf"))
 pdfmetrics.registerFont(TTFont("add", "FiraSans-Regular.ttf"))
 pdfmetrics.registerFont(TTFont("foot", "FiraSans-Thin.ttf"))
 
-logger.level = 10
-
 
 custom_style = questionary.Style(
     [
@@ -217,7 +215,7 @@ def create_page(
         drawing = svg2rlg(logo.name)
         if isinstance(drawing, Drawing):
             drawing = utils.scale(drawing, 0.5)
-            renderPDF.draw(drawing, pdf, 1041, 15)
+            renderPDF.draw(drawing, pdf, x=1041, y=15)
         else:
             logger.warning("Logo is not a drawing")
             pdf.setFont("logo", 20)
@@ -422,7 +420,6 @@ def main():
     else:
         tmpfile = None
 
-
     try:
         tmpdir = tempfile.mkdtemp()
         for line, dires in tqdm.tqdm(lines.items(), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True):
@@ -460,7 +457,6 @@ def main():
                             logo=tmpfile,
                             routes=utils.prepare_linedraw_info(shapedict, stop_times, ourtrips, selected_routes, stops, line, k, [stop["stop_id"] for stop in ourstops]),
                             color=color,
-                            label_fontsize=6,
                             label_rotation=15,
                             tmpdir=tmpdir,
                         )
