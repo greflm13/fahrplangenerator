@@ -3,28 +3,24 @@ import csv
 import math
 import argparse
 from typing import Dict, List, Tuple, Optional, Union
+from collections import namedtuple
 
+import pickle
+import hashlib
 import questionary
+
+import numpy as np
+import pandas as pd
 import contextily as cx
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
 import geopandas as gpd
-from shapely.geometry import shape, Point
-from matplotlib.axes import Axes
-from xyzservices import TileProvider
-import pickle
-import hashlib
-import numpy as np
 
-try:
-    import pandas as pd
-except Exception:
-    pd = None
-try:
-    from scipy.spatial import cKDTree as KDTree
-except Exception:
-    KDTree = None
+from matplotlib.axes import Axes
+from scipy.spatial import cKDTree
+from shapely.geometry import shape, Point
+from xyzservices import TileProvider, providers
 
 from modules.logger import logger
 
@@ -49,6 +45,8 @@ questionary_style = questionary.Style(
     ]
 )
 
+Route = namedtuple("Route", ["shape_id", "start_stop", "end_stop"])
+
 
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments."""
@@ -58,7 +56,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-c", "--color", type=str, default="green", help="Color of the shapes on the map", dest="color")
     parser.add_argument("-l", "--linewidth", type=float, default=None, help="Line width of the shapes on the map", dest="linewidth")
     parser.add_argument("-s", "--stops", action="store_true", dest="plot_stops", help="Plot stops along the selected route")
+    parser.add_argument("-p", "--padding", type=int, default=10, help="Padding around the route in percent (default: 10)", dest="padding")
+    parser.add_argument("-r", "--rotate", type=int, default=0, help="Rotate labels by given angle in degrees", dest="rotate")
+    parser.add_argument("-f", "--fontsize", type=int, default=7, help="Font size for stop labels (default: 7)", dest="fontsize")
     parser.add_argument(
+        "-m",
         "--map-provider",
         type=str,
         choices=[
@@ -81,16 +83,16 @@ def parse_args() -> argparse.Namespace:
 def get_provider_source(provider_name: str) -> TileProvider:
     """Get the contextily provider source based on the provider name."""
     provider_map = {
-        "BasemapAT": cx.providers.BasemapAT.highdpi,
-        "OPNVKarte": cx.providers.OPNVKarte,
-        "OSM": cx.providers.OpenStreetMap.Mapnik,
-        "OSMDE": cx.providers.OpenStreetMap.DE,
-        "ORM": cx.providers.OpenRailwayMap,
-        "OTM": cx.providers.OpenTopoMap,
-        "UN": cx.providers.UN.ClearMap,
-        "SAT": cx.providers.Esri.WorldImagery,
+        "BasemapAT": providers.BasemapAT.highdpi,
+        "OPNVKarte": providers.OPNVKarte,
+        "OSM": providers.OpenStreetMap.Mapnik,
+        "OSMDE": providers.OpenStreetMap.DE,
+        "ORM": providers.OpenRailwayMap,
+        "OTM": providers.OpenTopoMap,
+        "UN": providers.UN.ClearMap,
+        "SAT": providers.Esri.WorldImagery,
     }
-    return provider_map.get(provider_name, cx.providers.BasemapAT.highdpi)
+    return provider_map.get(provider_name, providers.BasemapAT.highdpi)
 
 
 def compare_coords(lat1: Union[str, float], lon1: Union[str, float], lat2: Union[str, float], lon2: Union[str, float], tolerance: float = 1e-9) -> bool:
@@ -159,10 +161,10 @@ def build_spatial_index(stops: List[Dict[str, str]]) -> Dict:
     if not coords:
         return {"kdtree": None, "coords": np.array([]), "names": [], "stop_ids": []}
     arr = np.array(coords)
-    if KDTree is None:
+    if cKDTree is None:
         logger.warning("scipy not available; spatial index disabled")
         return {"kdtree": None, "coords": arr, "names": names, "stop_ids": stop_ids}
-    tree = KDTree(arr)
+    tree = cKDTree(arr)
     return {"kdtree": tree, "coords": arr, "names": names, "stop_ids": stop_ids}
 
 
@@ -258,6 +260,7 @@ def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List
             logger.info("Loading GTFS from %s", folder)
             if os.path.exists(shapes_path):
                 before = len(shapes)
+                logger.debug("Loading shapes from %s", shapes_path)
                 if pd is not None:
                     try:
                         df = pd.read_csv(shapes_path, dtype=str)
@@ -275,6 +278,7 @@ def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List
                 logger.debug("No shapes.txt in %s", folder)
             if os.path.exists(trips_path):
                 before = len(trips)
+                logger.debug("Loading trips from %s", trips_path)
                 if pd is not None:
                     try:
                         df = pd.read_csv(trips_path, dtype=str)
@@ -292,6 +296,7 @@ def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List
                 logger.debug("No trips.txt in %s", folder)
             if os.path.exists(stops_path):
                 before = len(stops)
+                logger.debug("Loading stops from %s", stops_path)
                 if pd is not None:
                     try:
                         df = pd.read_csv(stops_path, dtype=str)
@@ -310,6 +315,7 @@ def load_gtfs(dirs: List[str]) -> Tuple[List[Dict], List[Dict], List[Dict], List
             stop_times_path = os.path.join(folder, "stop_times.txt")
             if os.path.exists(stop_times_path):
                 before = len(stop_times)
+                logger.debug("Loading stop_times from %s", stop_times_path)
                 if pd is not None:
                     try:
                         df = pd.read_csv(stop_times_path, dtype=str)
@@ -368,6 +374,7 @@ def plot_stops_on_ax(
     line_color: str = "green",
     marker_size: int = 30,
     label_fontsize: int = 7,
+    label_rotation: int = 0,
 ) -> int:
     """Plot stops for a given shape_id onto the provided axes and annotate stop names.
 
@@ -418,10 +425,10 @@ def plot_stops_on_ax(
         logger.warning("Failed to plot stops GeoDataFrame: %s", exc)
         return 0
 
-    for _, row in gdf_stops.iterrows():
+    for row in gdf_stops.itertuples(index=False):
         pt = row.geometry
-        name = row.get("stop_name", "")
-        if not name:
+        name = row.stop_name
+        if not isinstance(name, str) or not isinstance(pt, Point):
             continue
         try:
             txt = ax.annotate(
@@ -432,8 +439,10 @@ def plot_stops_on_ax(
                 fontsize=label_fontsize,
                 color="black",
                 ha="left",
-                va="bottom",
+                va="center",
                 zorder=6,
+                rotation=label_rotation,
+                rotation_mode="anchor",
                 bbox={"boxstyle": "round,pad=0.2", "facecolor": "white", "edgecolor": "black", "linewidth": 0.4, "alpha": 0.9},
                 clip_on=False,
             )
@@ -473,13 +482,13 @@ def build_shapedict(shapes: List[Dict], stop_index: Dict[int, Dict[Tuple[float, 
     return shapedict
 
 
-def build_routes(trips: List[Dict], shapedict: Dict[str, Dict]) -> List[Tuple[str, str, str]]:
+def build_routes(trips: List[Dict], shapedict: Dict[str, Dict]) -> List[Route]:
     """Return a sorted list of routes (shape_id, start_stop, end_stop)."""
     routes = set()
     for trip in trips:
         sid = trip.get("shape_id")
         if sid in shapedict:
-            routes.add((sid, shapedict[sid].get("start_stop", ""), shapedict[sid].get("end_stop", "")))
+            routes.add(Route(sid, shapedict[sid].get("start_stop", ""), shapedict[sid].get("end_stop", "")))
     routes_list = sorted(routes, key=lambda x: x[2])
     logger.info("Discovered %d routes", len(routes_list))
     return routes_list
@@ -508,7 +517,7 @@ def main():
     stops_index = build_stops_index(stops)
     stop_times_index = build_stop_times_index(stop_times)
 
-    choicelist: List[str] = [f"{route[1]} - {route[2]}" for route in routes]
+    choicelist: List[str] = [f"{route.start_stop} - {route.end_stop}" for route in routes]
 
     while True:
         geodata = []
@@ -516,19 +525,19 @@ def main():
         if choice is None:
             logger.info("No route selected, exiting.")
             break
-        idx = next((i for i, route in enumerate(routes) if choice == f"{route[1]} - {route[2]}"), None)
+        idx = next((i for i, route in enumerate(routes) if choice == f"{route.start_stop} - {route.end_stop}"), None)
         if idx is None:
             logger.warning("Selected choice not found in routes: %s", choice)
             continue
         route = routes[idx]
-        sid = route[0]
+        sid = route.shape_id
         points = shapedict[sid]["points"]
         geodata.append(shape({"type": "LineString", "coordinates": points}))
 
         gdf = gpd.GeoDataFrame({"geometry": geodata}, crs="EPSG:4326")
-        gminx, gmaxx, gminy, gmaxy = gdf.total_bounds
-        gbox_w = gmaxx - gminx
-        gbox_h = gmaxy - gminy
+        gxmin, gymin, gxmax, gymax = gdf.total_bounds
+        gbox_w = gxmax - gxmin
+        gbox_h = gymax - gymin
         gbox_aspect = gbox_w / gbox_h
         if gbox_aspect >= 1.0:
             figsize = (10 * math.sqrt(2), 10)
@@ -539,30 +548,49 @@ def main():
         if args.plot_stops:
             logger.info("Plotting stops for route %s -> %s", route[1], route[2])
             try:
-                n = plot_stops_on_ax(ax, sid, trips, stops_index, stop_times_index, line_color=args.color)
+                n = plot_stops_on_ax(ax, sid, trips, stops_index, stop_times_index, line_color=args.color, label_fontsize=args.fontsize, label_rotation=args.rotate)
                 logger.info("Plotted %d stops for route", n)
             except Exception as exc:
                 logger.warning("Exception while plotting stops: %s", exc)
 
         ax.set_axis_off()
-        minx, maxx = ax.get_xlim()
-        miny, maxy = ax.get_ylim()
-        bbox_w = maxx - minx
-        bbox_h = maxy - miny
+        xmin, xmax, ymin, ymax = ax.axis()
+        bbox_w = xmax - xmin
+        bbox_h = ymax - ymin
         bbox_aspect = bbox_w / bbox_h
+        projection_aspect = ax.get_aspect()
+        if isinstance(projection_aspect, str):
+            projection_aspect = 1.0
 
         if bbox_aspect >= 1.0:
-            target_aspect = math.sqrt(2)
-            target_ysize = bbox_w / target_aspect
-            increase_y = (target_ysize - bbox_h) / 2.0
-            ax.set_ylim(miny - increase_y, maxy + increase_y)
+            target_aspect = math.sqrt(2) * projection_aspect
+            aspect_diff = bbox_aspect - target_aspect
+            logger.debug("Wide bounding box: bbox_aspect=%.3f, target_aspect=%.3f, aspect_diff=%.3f", bbox_aspect, target_aspect, aspect_diff)
         else:
-            target_aspect = 1.0 / math.sqrt(2)
+            target_aspect = 1.0 / math.sqrt(2) * projection_aspect
+            aspect_diff = bbox_aspect - target_aspect
+            logger.debug("Tall bounding box: bbox_aspect=%.3f, target_aspect=%.3f, aspect_diff=%.3f", bbox_aspect, target_aspect, aspect_diff)
+        if aspect_diff < 0:
+            # Need to increase width
             target_xsize = bbox_h * target_aspect
             increase_x = (target_xsize - bbox_w) / 2.0
-            ax.set_xlim(minx - increase_x, maxx + increase_x)
+            xmin = xmin - increase_x
+            xmax = xmax + increase_x
+            logger.debug("Increased width by %.3f to %.3f", increase_x * 2.0, target_xsize)
+        else:
+            # Need to increase height
+            target_ysize = bbox_w / target_aspect
+            increase_y = (target_ysize - bbox_h) / 2.0
+            ymin = ymin - increase_y
+            ymax = ymax + increase_y
+            logger.debug("Increased height by %.3f to %.3f", increase_y * 2.0, target_ysize)
 
-        logger.info("Generating map for %s -> %s...", route[1], route[2])
+        xpadding = (xmax - xmin) * (args.padding / 100.0)
+        ypadding = (ymax - ymin) * (args.padding / 100.0)
+        ax.set(xlim=(xmin - xpadding, xmax + xpadding), ylim=(ymin - ypadding, ymax + ypadding))
+        logger.debug("Final axis limits: x=(%.6f, %.6f), y=(%.6f, %.6f)", xmin - xpadding, xmax + xpadding, ymin - ypadding, ymax + ypadding)
+
+        logger.info("Generating map for %s -> %s...", route.start_stop, route.end_stop)
         zoom_param = args.zoom if args.zoom >= 0 else "auto"
         done = False
         while not done:
@@ -578,7 +606,7 @@ def main():
                 else:
                     logger.error("Cannot add basemap, giving up.")
                     done = True
-        outname = f"{route[1].replace('/', '')} - {route[2].replace('/', '')} Map.png"
+        outname = f"{route.start_stop.replace('/', '')} - {route.end_stop.replace('/', '')} Map.png"
 
         try:
             plt.savefig(outname, dpi=1200, bbox_inches="tight", pad_inches=0)
