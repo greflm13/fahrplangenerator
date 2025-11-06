@@ -263,9 +263,11 @@ def main():
             routes.extend(utils.load_gtfs(folder, "routes"))
             if args.map:
                 shapes.extend(utils.load_gtfs(folder, "shapes"))
-                shapedict = utils.build_shapedict(shapes)
         else:
             logger.error("Input folder %s does not exist", folder)
+
+    if args.map:
+        shapedict = utils.build_shapedict(shapes)
 
     stopss = {}
     parent_stops = [stop for stop in stops if stop.get("parent_station", "") == ""]
