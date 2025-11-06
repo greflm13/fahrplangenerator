@@ -486,7 +486,10 @@ def main():
                     os.remove(dire)
     finally:
         for file in os.listdir(tmpdir):
-            os.remove(file)
+            try:
+                os.remove(file)
+            except Exception:
+                pass
         os.removedirs(tmpdir)
 
 
