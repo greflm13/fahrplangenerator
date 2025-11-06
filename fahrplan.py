@@ -242,6 +242,14 @@ def main():
     parser.add_argument("-o", "--output", help="Output file", type=str, required=False, dest="output", default="fahrplan.pdf")
     parser.add_argument("-m", "--map", help="Generate maps", action="store_true", dest="map")
     parser.add_argument("--no-logo", action="store_false", dest="logo")
+    parser.add_argument(
+        "--map-provider",
+        type=str,
+        choices=["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM", "OTM", "UN", "SAT"],
+        default="BasemapAT",
+        help="Map provider for the basemap (default: BasemapAT)",
+        dest="map_provider",
+    )
     args = parser.parse_args()
 
     stops, stop_times, trips, calendar, routes, shapes = [], [], [], [], [], []
@@ -459,6 +467,7 @@ def main():
                             color=color,
                             label_rotation=15,
                             tmpdir=tmpdir,
+                            map_provider=args.map_provider,
                         )
 
         pagelst: list[str] = []

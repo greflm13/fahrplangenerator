@@ -204,7 +204,7 @@ def plot_stops_on_ax(
                 zorder=6,
                 rotation=label_rotation,
                 rotation_mode="anchor",
-                bbox={"boxstyle": "round,pad=0.2", "facecolor": "white", "edgecolor": "black", "linewidth": 0.4, "alpha": 0.9},
+                bbox={"boxstyle": "round,pad=0.1", "facecolor": "white", "edgecolor": "black", "linewidth": 0.2, "alpha": 2 / 3},
                 clip_on=False,
             )
             try:
