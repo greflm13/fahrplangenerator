@@ -50,9 +50,9 @@ def draw_map(
         else:
             figsize = (10, 10 * math.sqrt(2))
         if ax is None:
-            ax = gdf.plot(facecolor="none", edgecolor=color, figsize=figsize)
+            ax = gdf.plot(facecolor="none", edgecolor=color, figsize=figsize, linewidth=0.5)
         else:
-            gdf.plot(ax=ax, facecolor="none", edgecolor=color, figsize=figsize)
+            gdf.plot(ax=ax, facecolor="none", edgecolor=color, figsize=figsize, linewidth=0.5)
 
     if ax is None:
         logger.error("No routes to plot on map")

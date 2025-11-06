@@ -483,6 +483,8 @@ def main():
                 if dire is not None:
                     os.remove(dire)
     finally:
+        for file in os.listdir(tmpdir):
+            os.remove(file)
         os.removedirs(tmpdir)
 
 
