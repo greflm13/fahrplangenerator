@@ -126,6 +126,7 @@ def draw_map(
         pdf.scale(pagesize[0] / 1188, pagesize[1] / (840 + movey))
         _, b = tempfile.mkstemp(suffix=".png", dir=tmpdir)
         plt.savefig(b, dpi=600, bbox_inches="tight", pad_inches=0)
+        plt.close()
         image = ImageReader(b)
         pdf.drawImage(image, x=50, y=60, width=1088, height=730 + movey, preserveAspectRatio=True)
         if isinstance(logo, tempfile._TemporaryFileWrapper):
