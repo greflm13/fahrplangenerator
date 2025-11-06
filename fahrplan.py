@@ -490,7 +490,10 @@ def main():
                 os.remove(file)
             except Exception:
                 pass
-        os.removedirs(tmpdir)
+        try:
+            os.removedirs(tmpdir)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

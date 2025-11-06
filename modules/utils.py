@@ -5,6 +5,7 @@ import random
 from typing import Dict, List, Set, Tuple
 from collections import namedtuple
 
+import tqdm
 import pandas as pd
 
 from svglib.svglib import Drawing
@@ -37,7 +38,7 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
 def build_shapedict(shapes: List[Dict]) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = {}
-    for shapeline in shapes:
+    for shapeline in tqdm.tqdm(shapes, desc="Building shape dict", unit=" points", ascii=True, dynamic_ncols=True):
         sid = shapeline["shape_id"]
         if sid not in shapedict:
             logger.debug("Processing shape ID: %s", sid)
