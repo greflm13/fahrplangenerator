@@ -59,7 +59,7 @@ def draw_map(
         return None
 
     try:
-        n = plot_stops_on_ax(ax, routes["points"], line_color=color, label_fontsize=label_fontsize, label_rotation=label_rotation)
+        n = plot_stops_on_ax(ax, routes["points"], line_color=color, endstops=routes["endstops"], label_fontsize=label_fontsize, label_rotation=label_rotation)
         logger.info("Plotted %d stops for route", n)
     except Exception as exc:
         logger.warning("Exception while plotting stops: %s", exc)
@@ -159,6 +159,7 @@ def plot_stops_on_ax(
     ax: Axes,
     stops: List,
     line_color: str,
+    endstops: List[str],
     marker_size: int = 30,
     label_fontsize: int = 7,
     label_rotation: int = 0,
@@ -190,6 +191,11 @@ def plot_stops_on_ax(
     for row in gdf_stops.itertuples(index=False):
         pt = row.geometry
         name = row.name
+        if name in endstops:
+            fontweight = "bold"
+        else:
+            fontweight = "normal"
+
         if not isinstance(name, str) or not isinstance(pt, Point):
             continue
         try:
@@ -200,6 +206,7 @@ def plot_stops_on_ax(
                 textcoords="offset points",
                 fontsize=label_fontsize,
                 color="black",
+                weight=fontweight,
                 ha="left",
                 va="center",
                 zorder=6,

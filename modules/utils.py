@@ -15,7 +15,7 @@ from shapely.geometry import shape, Point
 from modules.logger import logger
 
 Shape = namedtuple("Shape", ["shapeid", "tripid"])
-Stop = namedtuple("Stop", ["id", "name"])
+Stop = namedtuple("Stop", ["name"])
 
 
 def load_gtfs(folder: str, type: str) -> List[Dict]:
@@ -80,10 +80,11 @@ def prepare_linedraw_info(
     """Prepare line drawing information for selected shapes."""
     shapes: Set[Shape] = set()
     stop_points: Set[Tuple] = set()
+    end_stop_ids: Set[str] = set()
     for trip in trips:
         if routes[trip["route_id"]]["route_short_name"] == line and "d" + trip["direction_id"] == direction:
             shapes.add(Shape(trip["shape_id"], trip["trip_id"]))
-    linedrawinfo = {"shapes": [], "points": [], "rows": []}
+    linedrawinfo = {"shapes": [], "points": [], "endstops": []}
     for shap in shapes:
         times = stop_times[shap.tripid]
         for timeidx, time in enumerate(times):
@@ -98,15 +99,17 @@ def prepare_linedraw_info(
                             [
                                 (
                                     Point(float(stops[stop["stop_id"]]["stop_lon"]), float(stops[stop["stop_id"]]["stop_lat"])),
-                                    Stop(stop["stop_id"], stops[stop["stop_id"]]["stop_name"]),
+                                    Stop(stops[stop["stop_id"]]["stop_name"]),
                                 )
                                 for stop in tim
                             ]
                         )
                         if len(geo) != 1:
                             linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
+                        end_stop_ids.add(stops[times[-1]["stop_id"]]["stop_name"])
                         break
     linedrawinfo["points"] = list(stop_points)
+    linedrawinfo["endstops"] = list(end_stop_ids)
     return linedrawinfo
 
 
