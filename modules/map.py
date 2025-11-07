@@ -188,9 +188,20 @@ def plot_stops_on_ax(
         logger.warning("Failed to plot stops GeoDataFrame: %s", exc)
         return 0
 
+    already_drawn = set()
+
     for row in gdf_stops.itertuples(index=False):
         pt = row.geometry
         name = row.name
+        parent = row.parent
+
+        if parent != "":
+            name = parent
+            if parent not in already_drawn:
+                already_drawn.add(parent)
+            else:
+                continue
+
         if name in endstops:
             fontweight = "bold"
         else:

@@ -15,7 +15,7 @@ from shapely.geometry import shape, Point
 from modules.logger import logger
 
 Shape = namedtuple("Shape", ["shapeid", "tripid"])
-Stop = namedtuple("Stop", ["name"])
+Stop = namedtuple("Stop", ["id", "name", "parent"])
 
 
 def load_gtfs(folder: str, type: str) -> List[Dict]:
@@ -99,14 +99,18 @@ def prepare_linedraw_info(
                             [
                                 (
                                     Point(float(stops[stop["stop_id"]]["stop_lon"]), float(stops[stop["stop_id"]]["stop_lat"])),
-                                    Stop(stops[stop["stop_id"]]["stop_name"]),
+                                    Stop(stop["stop_id"], stops[stop["stop_id"]]["stop_name"], stops[stops[stop["stop_id"]]["parent_station"]]["stop_name"]),
                                 )
                                 for stop in tim
                             ]
                         )
                         if len(geo) != 1:
                             linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
-                        end_stop_ids.add(stops[times[-1]["stop_id"]]["stop_name"])
+                        endstop = stops[times[-1]["stop_id"]]
+                        if endstop["parent_station"] != "":
+                            end_stop_ids.add(stops[endstop["parent_station"]]["stop_name"])
+                        else:
+                            end_stop_ids.add(endstop["stop_name"])
                         break
     linedrawinfo["points"] = list(stop_points)
     linedrawinfo["endstops"] = list(end_stop_ids)
