@@ -265,6 +265,7 @@ def query_stop_names(stop_hierarchy: Dict, hst_map=None):
     if hst_map is None:
         hst_map = {}
     loccache = os.path.join(CACHEDIR, "location_cache")
+    os.makedirs(CACHEDIR, exist_ok=True)
     if not os.path.exists(loccache):
         with open(loccache, "x", encoding="utf-8") as f:
             f.write(json.dumps({}))
