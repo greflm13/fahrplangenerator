@@ -11,10 +11,10 @@
             "program": "fahrplan.py",
             "console": "integratedTerminal",
             "args": [
-                // "-i",
-                // "~/Documents/20251012-2010-at-styria-2025/gkb-at/",
                 "-i",
-                "~/Documents/20251012-2010-at-styria-2025/grazholding-at/",
+                "~/Documents/20251012-2010-at-styria-2025/gkb-at/",
+                // "-i",
+                // "~/Documents/20251012-2010-at-styria-2025/grazholding-at/",
                 // "-i",
                 // "~/Documents/20251012-2010-at-styria-2025/grazverbundlinie-at/",
                 // "-i",
@@ -32,21 +32,21 @@
                 // "-i",
                 // "~/Documents/20251011-0009_gtfs_evu_2026/"
                 "-m",
+                "-j",
+                "~/Documents/20251027-0109_hst_json_2025/steige.json",
             ]
         },
         {
-            "name": "Python Debugger: map.py",
+            "name": "Python Debugger: build_loc_cache.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "map.py",
+            "program": "build_location_cache.py",
             "console": "integratedTerminal",
             "args": [
                 "-i",
                 "~/Documents/20251012-2010-at-styria-2025/grazholding-at/",
-                "-z",
-                "12",
-                "-l",
-                "0.5",
+                "-j",
+                "~/Documents/20251027-0109_hst_json_2025/haltestellen.json",
             ]
         }
     ]

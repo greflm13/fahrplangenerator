@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import json
 import argparse
 import tempfile
 
@@ -241,6 +242,8 @@ def main():
     parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
     parser.add_argument("-o", "--output", help="Output file", type=str, required=False, dest="output", default="fahrplan.pdf")
     parser.add_argument("-m", "--map", help="Generate maps", action="store_true", dest="map")
+    parser.add_argument("-j", "--stop-name-json", help="Stop name mapping json", required=False, type=str, dest="mapping_json")
+    parser.add_argument("--dpi", help="map dpi", type=int, dest="map_dpi")
     parser.add_argument("--no-logo", action="store_false", dest="logo")
     parser.add_argument(
         "--map-provider",
@@ -269,34 +272,25 @@ def main():
     if args.map:
         shapedict = utils.build_shapedict(shapes)
 
-    stopss = {}
-    parent_stops = [stop for stop in stops if stop.get("parent_station", "") == ""]
-    for stop in tqdm.tqdm(parent_stops, desc="Fixing parent stop names", unit=" stops", ascii=True, dynamic_ncols=True):
-        stop["stop_ids"] = [stop["stop_id"]]
-        child_names = [s["stop_name"] for s in stops if s.get("parent_station", "") == stop["stop_id"]]
-        if child_names:
-            child_name = utils.most_frequent(utils.merge(child_names))
-            if stop["stop_name"] not in child_name and child_name not in stop["stop_name"]:
-                child_name = child_name + " " + stop["stop_name"]
-            stop["stop_name"] = max(child_name, stop["stop_name"], key=len)
-        if stopss.get(stop["stop_name"], False):
-            stopss[stop["stop_name"]]["stop_ids"].append(stop["stop_id"])
-        else:
-            stopss[stop["stop_name"]] = stop
+    if args.mapping_json:
+        with open(args.mapping_json, "r", encoding="utf-8") as f:
+            hst_map = utils.load_hst_json(json.loads(f.read()))
+
+    stop_hierarchy = utils.build_stop_hierarchy(stops)
+    stop_hierarchy = utils.query_stop_names(stop_hierarchy, hst_map)
+    stopss = {stop["stop_name"]: stop["stop_id"] for stop in stop_hierarchy.values()}
+
     logger.info("loaded data")
 
-    choices = sorted({stop["stop_name"] for stop in parent_stops})
+    choices = sorted({stop["stop_name"] for stop in stop_hierarchy.values()})
     choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
-    ourstop = stopss[choice]
+    ourstop = stop_hierarchy[stopss[choice]]
 
     logger.info("computing our stops")
-    ourstops = []
-    for stop in tqdm.tqdm(stops, desc="Finding stops", unit=" stops", ascii=True, dynamic_ncols=True):
-        for stopid in ourstop.get("stop_ids", [ourstop["stop_id"]]):
-            if stop.get("parent_station", "") == stopid and stop not in ourstops:
-                ourstops.append(stop)
-            elif stop["stop_id"] == stopid and stop not in ourstops:
-                ourstops.append(stop)
+    if "children" in ourstop:
+        ourstops = [ourstop] + ourstop["children"]
+    else:
+        ourstops = [ourstop]
     logger.info("computing our times")
     ourtimes = []
     for time in tqdm.tqdm(stop_times, desc="Finding stop times", unit=" stop times", ascii=True, dynamic_ncols=True):
@@ -470,6 +464,7 @@ def main():
                             label_rotation=15,
                             tmpdir=tmpdir,
                             map_provider=args.map_provider,
+                            dpi=args.map_dpi,
                         )
 
         pagelst: list[str] = []

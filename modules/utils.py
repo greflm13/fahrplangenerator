@@ -1,5 +1,6 @@
 import os
 import copy
+import json
 import random
 
 from typing import Dict, List, Set, Tuple
@@ -9,13 +10,23 @@ import tqdm
 import pandas as pd
 
 from svglib.svglib import Drawing
+from geopy.geocoders import Photon
 from pypdf import PdfReader, PdfWriter
 from shapely.geometry import shape, Point
 
 from modules.logger import logger
 
+if __package__ is None:
+    PACKAGE = ""
+else:
+    PACKAGE = __package__
+SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
+CACHEDIR = os.path.join(SCRIPTDIR, "__pycache__")
+
+geolocator = Photon(user_agent="fahrplan.py")
+
 Shape = namedtuple("Shape", ["shapeid", "tripid"])
-Stop = namedtuple("Stop", ["id", "name", "parent"])
+Stop = namedtuple("Stop", ["id", "name"])
 
 
 def load_gtfs(folder: str, type: str) -> List[Dict]:
@@ -38,7 +49,7 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
 def build_shapedict(shapes: List[Dict]) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = {}
-    for shapeline in tqdm.tqdm(shapes, desc="Building shape dict", unit=" points", ascii=True, dynamic_ncols=True):
+    for shapeline in tqdm.tqdm(shapes, desc="Building shapes", unit=" points", ascii=True, dynamic_ncols=True):
         sid = shapeline["shape_id"]
         if sid not in shapedict:
             logger.debug("Processing shape ID: %s", sid)
@@ -83,7 +94,8 @@ def prepare_linedraw_info(
     end_stop_ids: Set[str] = set()
     for trip in trips:
         if routes[trip["route_id"]]["route_short_name"] == line and "d" + trip["direction_id"] == direction:
-            shapes.add(Shape(trip["shape_id"], trip["trip_id"]))
+            if trip["shape_id"] != "":
+                shapes.add(Shape(trip["shape_id"], trip["trip_id"]))
     linedrawinfo = {"shapes": [], "points": [], "endstops": []}
     for shap in shapes:
         times = stop_times[shap.tripid]
@@ -93,13 +105,13 @@ def prepare_linedraw_info(
                 geometry = shapedict[shap.shapeid]
                 for geoidx, point in enumerate(geometry):
                     if point.z == float(shape_dist_traveled):
-                        geo = [Point(point.x, point.y) for point in geometry[geoidx:]]
+                        geo = geometry[geoidx:]
                         tim = times[timeidx:]
                         stop_points.update(
                             [
                                 (
                                     Point(float(stops[stop["stop_id"]]["stop_lon"]), float(stops[stop["stop_id"]]["stop_lat"])),
-                                    Stop(stop["stop_id"], stops[stop["stop_id"]]["stop_name"], stops[stops[stop["stop_id"]]["parent_station"]]["stop_name"]),
+                                    Stop(stop["stop_id"], get_stop_name(stop["stop_id"], stops)),
                                 )
                                 for stop in tim
                             ]
@@ -107,11 +119,7 @@ def prepare_linedraw_info(
                         if len(geo) != 1:
                             linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
                         endstop = stops[times[-1]["stop_id"]]
-                        if endstop["parent_station"] != "":
-                            end_stop_ids.add(stops[endstop["parent_station"]]["stop_name"])
-                        else:
-                            end_stop_ids.add(endstop["stop_name"])
-                        break
+                        end_stop_ids.add(get_stop_name(endstop["stop_id"], stops))
     linedrawinfo["points"] = list(stop_points)
     linedrawinfo["endstops"] = list(end_stop_ids)
     return linedrawinfo
@@ -212,3 +220,130 @@ def generate_contrasting_vibrant_color():
         color = "#" + "".join(random.choice("0123456789abcdef") for _ in range(6))
         if is_contrasting(color) and is_vibrant(color):
             return color
+
+
+def find_correct_stop_name(stops):
+    parent_stops = []
+    stopss = {}
+    for stop in tqdm.tqdm(parent_stops, desc="Fixing parent stop names", unit=" stops", ascii=True, dynamic_ncols=True):
+        stop["stop_ids"] = [stop["stop_id"]]
+        child_names = [s["stop_name"] for s in stops if s.get("parent_station", "") == stop["stop_id"]]
+        if child_names:
+            child_name = most_frequent(merge(child_names))
+            if stop["stop_name"] not in child_name and child_name not in stop["stop_name"]:
+                child_name = child_name + " " + stop["stop_name"]
+            stop["stop_name"] = max(child_name, stop["stop_name"], key=len)
+        if stopss.get(stop["stop_name"], False):
+            stopss[stop["stop_name"]]["stop_ids"].append(stop["stop_id"])
+        else:
+            stopss[stop["stop_name"]] = stop
+
+
+def build_stop_hierarchy(stops: List[Dict[str, str]]):
+    hierarchy = {}
+    for stop in stops:
+        if stop["parent_station"] == "":
+            if stop["stop_id"] in hierarchy.keys():
+                hierarchy[stop["stop_id"]].update(stop)
+            else:
+                hierarchy[stop["stop_id"]] = stop
+        else:
+            if stop["parent_station"] not in hierarchy.keys():
+                hierarchy[stop["parent_station"]] = {"children": [stop]}
+            elif "children" not in hierarchy[stop["parent_station"]].keys():
+                hierarchy[stop["parent_station"]].update({"children": [stop]})
+            else:
+                hierarchy[stop["parent_station"]]["children"].append(stop)
+    return hierarchy
+
+
+def get_place(coords: Tuple[float, float]):
+    return geolocator.reverse(coords).raw["properties"]  # type: ignore
+
+
+def query_stop_names(stop_hierarchy: Dict, hst_map=None):
+    if hst_map is None:
+        hst_map = {}
+    loccache = os.path.join(CACHEDIR, "location_cache")
+    if not os.path.exists(loccache):
+        with open(loccache, "x", encoding="utf-8") as f:
+            f.write(json.dumps({}))
+    with open(loccache, "r", encoding="utf-8") as f:
+        locationcache = json.loads(f.read())
+    for stop in tqdm.tqdm(stop_hierarchy.values(), desc="Querying stop names", unit=" stops", ascii=True, dynamic_ncols=True):
+        if "children" in stop:
+            child_ids = [child["stop_id"] for child in stop["children"]]
+        else:
+            child_ids = []
+        if stop["stop_id"] not in locationcache.keys() and stop["stop_id"] not in hst_map.keys() and not any(child in hst_map for child in child_ids):
+            if "children" in stop:
+                child_names = [child["stop_name"] for child in stop["children"]]
+            else:
+                child_names = [""]
+            if stop["stop_name"] not in child_names and stop["stop_name"] not in child_names[0]:
+                if stop["stop_id"] not in locationcache:
+                    found = False
+                    if "children" in stop:
+                        attempts = [(float(stop["stop_lat"]), float(stop["stop_lon"]))] + [(float(child["stop_lat"]), float(child["stop_lon"])) for child in stop["children"]]
+                    else:
+                        attempts = [(float(stop["stop_lat"]), float(stop["stop_lon"]))]
+                    for attempt in attempts:
+                        location_lookup = get_place(attempt)
+                        if (
+                            "name" in location_lookup.keys()
+                            and location_lookup["name"] != ""
+                            and location_lookup["osm_value"] in ["bus_stop", "stop", "station", "train_station", "halt"]
+                        ):
+                            stop["stop_name"] = location_lookup["name"]
+                            locationcache[stop["stop_id"]] = location_lookup["name"]
+                            found = True
+                            break
+                    if not found:
+                        if child_names[0] != "":
+                            stop["stop_name"] = child_names[0]
+                            locationcache[stop["stop_id"]] = child_names[0]
+                        else:
+                            locationcache[stop["stop_id"]] = stop["stop_name"]
+            elif stop["stop_name"] in child_names[0]:
+                locationcache[stop["stop_id"]] = child_names[0]
+            else:
+                locationcache[stop["stop_id"]] = stop["stop_name"]
+            stop["stop_name"] = locationcache[stop["stop_id"]]
+            with open(loccache, "w", encoding="utf-8") as f:
+                f.write(json.dumps(locationcache, indent=2))
+        elif stop["stop_id"] in hst_map.keys():
+            stop["stop_name"] = hst_map[stop["stop_id"]]
+            locationcache[stop["stop_id"]] = hst_map[stop["stop_id"]]
+        elif any(child in hst_map for child in child_ids):
+            for child in child_ids:
+                if child in hst_map:
+                    stop["stop_name"] = hst_map[child]
+                    locationcache[stop["stop_id"]] = hst_map[child]
+                    break
+        else:
+            stop["stop_name"] = locationcache[stop["stop_id"]]
+        if "children" in stop:
+            for child in stop["children"]:
+                locationcache[child["stop_id"]] = locationcache[stop["stop_id"]]
+
+    with open(loccache, "w", encoding="utf-8") as f:
+        f.write(json.dumps(locationcache, indent=2))
+
+    return stop_hierarchy
+
+
+def get_stop_name(stop_id: str, stops) -> str:
+    loccache = os.path.join(CACHEDIR, "location_cache")
+    with open(loccache, "r", encoding="utf-8") as f:
+        locationcache = json.loads(f.read())
+    if stops[stop_id]["parent_station"] != "":
+        return locationcache[stops[stop_id]["parent_station"]]
+    else:
+        return locationcache[stop_id]
+
+
+def load_hst_json(json: Dict):
+    id_mapping = {}
+    for steig in json["features"]:
+        id_mapping[steig["properties"]["stg_globid"]] = steig["properties"]["stg_name"]
+    return id_mapping
