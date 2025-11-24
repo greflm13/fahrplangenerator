@@ -22,6 +22,7 @@ from xyzservices import TileProvider, providers
 
 from modules.utils import scale
 from modules.logger import logger
+from modules.datatypes import HierarchyStop
 
 
 def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = None, min_size: int = 3, max_size: int = 60) -> None:
@@ -131,7 +132,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
 
 def draw_map(
     page: str,
-    stop: Dict[str, str],
+    stop: HierarchyStop,
     logo,
     routes: Dict,
     color: str,
@@ -242,16 +243,10 @@ def draw_map(
         plt.close()
         image = ImageReader(b)
         pdf.drawImage(image, x=50, y=60, width=1088, height=730 + movey, preserveAspectRatio=True)
+
         if isinstance(logo, tempfile._TemporaryFileWrapper):
-            drawing = svg2rlg(logo.name)
-            if isinstance(drawing, Drawing):
-                drawing = scale(drawing, 0.5)
-                renderPDF.draw(drawing, pdf, x=1041, y=15)
-            else:
-                logger.warning("Logo is not a drawing")
-                pdf.setFont("logo", 20)
-                pdf.setFillColor(colors.black)
-                pdf.drawRightString(x=1108, y=23.5, text="</srgn>")
+            image = ImageReader(logo.name)
+            pdf.drawImage(image, x=1041, y=15, width=80, height=30, preserveAspectRatio=True)
         elif isinstance(logo, str):
             pdf.setFont("logo", 20)
             pdf.setFillColor(colors.black)
@@ -259,7 +254,7 @@ def draw_map(
 
         pdf.setFont("foot", 17)
         pdf.setFillColor(colors.black)
-        pdf.drawString(x=80, y=23.5, text=stop["stop_name"])
+        pdf.drawString(x=80, y=23.5, text=stop.stop_name)
         pdf.save()
         os.remove(b)
         logger.info("Saved map to %s", page)

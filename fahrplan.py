@@ -14,14 +14,14 @@ from rich_argparse import RichHelpFormatter
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
-from reportlab.graphics import renderPDF
 from reportlab.lib import colors, pagesizes
-from svglib.svglib import svg2rlg, Drawing
+from reportlab.lib.utils import ImageReader
 
 import modules.utils as utils
 
-from modules.logger import logger
 from modules.map import draw_map
+from modules.logger import logger
+from modules.datatypes import HierarchyStop
 
 PIL.Image.MAX_IMAGE_PIXELS = 9331200000
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -113,7 +113,7 @@ def addtimes(pdf: Canvas, daytimes: dict[str, list[dict[str, str]]], day: str, p
 def create_page(
     line: str,
     dest: str,
-    stop: dict[str, str],
+    stop: HierarchyStop,
     path: str,
     montimes: dict[str, list[dict[str, str]]],
     sattimes: dict[str, list[dict[str, str]]],
@@ -213,15 +213,8 @@ def create_page(
             y -= 10
 
     if isinstance(logo, tempfile._TemporaryFileWrapper):
-        drawing = svg2rlg(logo.name)
-        if isinstance(drawing, Drawing):
-            drawing = utils.scale(drawing, 0.5)
-            renderPDF.draw(drawing, pdf, x=1041, y=15)
-        else:
-            logger.warning("Logo is not a drawing")
-            pdf.setFont("logo", 20)
-            pdf.setFillColor(colors.black)
-            pdf.drawRightString(x=1108, y=23.5, text="</srgn>")
+        image = ImageReader(logo.name)
+        pdf.drawImage(image, x=1041, y=15, width=80, height=30, preserveAspectRatio=True)
     elif isinstance(logo, str):
         pdf.setFont("logo", 20)
         pdf.setFillColor(colors.black)
@@ -229,68 +222,19 @@ def create_page(
 
     pdf.setFont("foot", 17)
     pdf.setFillColor(colors.black)
-    pdf.drawString(x=80, y=23.5, text=stop["stop_name"])
+    pdf.drawString(x=80, y=23.5, text=stop.stop_name)
 
     pdf.save()
     logger.info("Done.")
     return path
 
 
-def main():
-    parser = argparse.ArgumentParser(formatter_class=RichHelpFormatter)
-    parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", required=True, dest="input")
-    parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
-    parser.add_argument("-o", "--output", help="Output file", type=str, required=False, dest="output", default="fahrplan.pdf")
-    parser.add_argument("-m", "--map", help="Generate maps", action="store_true", dest="map")
-    parser.add_argument("-j", "--stop-name-json", help="Stop name mapping json", required=False, type=str, dest="mapping_json")
-    parser.add_argument("--dpi", help="map dpi", type=int, dest="map_dpi")
-    parser.add_argument("--no-logo", action="store_false", dest="logo")
-    parser.add_argument(
-        "--map-provider",
-        type=str,
-        choices=["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM", "OTM", "UN", "SAT"],
-        default="BasemapAT",
-        help="Map provider for the basemap (default: BasemapAT)",
-        dest="map_provider",
-    )
-    args = parser.parse_args()
-
-    stops, stop_times, trips, calendar, routes, shapes = [], [], [], [], [], []
-
-    for folder in tqdm.tqdm(args.input, desc="Loading data", unit=" folders", ascii=True, dynamic_ncols=True):
-        if os.path.isdir(folder):
-            stops.extend(utils.load_gtfs(folder, "stops"))
-            stop_times.extend(utils.load_gtfs(folder, "stop_times"))
-            trips.extend(utils.load_gtfs(folder, "trips"))
-            calendar.extend(utils.load_gtfs(folder, "calendar"))
-            routes.extend(utils.load_gtfs(folder, "routes"))
-            if args.map:
-                shapes.extend(utils.load_gtfs(folder, "shapes"))
-        else:
-            logger.error("Input folder %s does not exist", folder)
-
-    if args.map:
-        shapedict = utils.build_shapedict(shapes)
-
-    if args.mapping_json:
-        with open(args.mapping_json, "r", encoding="utf-8") as f:
-            hst_map = utils.load_hst_json(json.loads(f.read()))
-
-    stop_hierarchy = utils.build_stop_hierarchy(stops)
-    stop_hierarchy = utils.query_stop_names(stop_hierarchy, hst_map)
-    stopss = {stop["stop_name"]: stop["stop_id"] for stop in stop_hierarchy.values()}
-
-    logger.info("loaded data")
-
-    choices = sorted({stop["stop_name"] for stop in stop_hierarchy.values()})
-    choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
-    ourstop = stop_hierarchy[stopss[choice]]
-
+def compute(ourstop: HierarchyStop, stop_times, trips: list[dict], calendar, routes: list[dict], stops: dict[str, dict], args, destinations: dict[str, dict[str, str]], shapedict):
     logger.info("computing our stops")
-    if "children" in ourstop:
-        ourstops = [ourstop] + ourstop["children"]
-    else:
-        ourstops = [ourstop]
+    ourstops = [ourstop.to_dict()]
+    if ourstop.children is not None:
+        ourstops.extend(ourstops[0]["children"])
+        del ourstops[0]["children"]
     logger.info("computing our times")
     ourtimes = []
     for time in tqdm.tqdm(stop_times, desc="Finding stop times", unit=" stop times", ascii=True, dynamic_ncols=True):
@@ -318,7 +262,6 @@ def main():
         print(f'Stop "{ourstop}" not found!')
         return
 
-    stops = utils.build_list_index(stops, "stop_id")
     selected_stops = utils.build_list_index(ourstops, "stop_id")
     selected_stop_times = utils.build_list_index(ourtimes, "trip_id")
     stop_times = utils.build_stop_times_index(stop_times)
@@ -336,7 +279,7 @@ def main():
                 {
                     "dest": trip["trip_headsign"],
                     "time": selected_stop_times[trip["trip_id"]]["arrival_time"][:-3],
-                    "line": selected_routes[trip["route_id"]]["route_short_name"],
+                    "line": trip["route_id"],
                     "dire": selected_trips[trip["trip_id"]]["direction_id"],
                     "stop": selected_stops[selected_stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
                 }
@@ -346,7 +289,7 @@ def main():
                 {
                     "dest": trip["trip_headsign"],
                     "time": selected_stop_times[trip["trip_id"]]["arrival_time"][:-3],
-                    "line": selected_routes[trip["route_id"]]["route_short_name"],
+                    "line": trip["route_id"],
                     "dire": selected_trips[trip["trip_id"]]["direction_id"],
                     "stop": selected_stops[selected_stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
                 }
@@ -356,7 +299,7 @@ def main():
                 {
                     "dest": trip["trip_headsign"],
                     "time": selected_stop_times[trip["trip_id"]]["arrival_time"][:-3],
-                    "line": selected_routes[trip["route_id"]]["route_short_name"],
+                    "line": trip["route_id"],
                     "dire": selected_trips[trip["trip_id"]]["direction_id"],
                     "stop": selected_stops[selected_stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
                 }
@@ -407,8 +350,8 @@ def main():
     if args.logo:
         try:
             logger.info("getting logo")
-            res = requests.get("https://files.sorogon.eu/logo-fixed.svg")
-            tmpfile = tempfile.NamedTemporaryFile()
+            res = requests.get("https://files.sorogon.eu/logo.png")
+            tmpfile = tempfile.NamedTemporaryFile(suffix=".png")
             tmpfile.write(res.content)
             tmpfile.flush()
         except requests.exceptions.ConnectionError:
@@ -434,16 +377,13 @@ def main():
             if not pages.get(line, False):
                 pages[line] = {}
             for k in dires.keys():
-                destlist = []
-                for time in mondict.get(line, satdict.get(line, sundict.get(line, {}))).get(k, satdict.get(line, {}).get(k, sundict.get(line, {}).get(k, {}))).values():
-                    destlist.extend([t["dest"] for t in time])
-                dest = utils.most_frequent(destlist)
-                if dest != ourstop:
+                dest = destinations[line][k]
+                if dest != ourstop.stop_name:
                     page = pages.get(line, {}).get(k, {})
                     if not isinstance(page, str):
                         page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
                     pages[line][k] = create_page(
-                        line,
+                        selected_routes[line]["route_short_name"],
                         dest,
                         ourstop,
                         page,
@@ -489,6 +429,61 @@ def main():
             os.removedirs(tmpdir)
         except Exception:
             pass
+
+
+def main():
+    parser = argparse.ArgumentParser(formatter_class=RichHelpFormatter)
+    parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", required=True, dest="input")
+    parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
+    parser.add_argument("-o", "--output", help="Output file", type=str, required=False, dest="output", default="fahrplan.pdf")
+    parser.add_argument("-m", "--map", help="Generate maps", action="store_true", dest="map")
+    parser.add_argument("-j", "--stop-name-json", help="Stop name mapping json", required=False, type=str, dest="mapping_json")
+    parser.add_argument("--dpi", help="map dpi", type=int, dest="map_dpi")
+    parser.add_argument("--no-logo", action="store_false", dest="logo")
+    parser.add_argument(
+        "--map-provider",
+        type=str,
+        choices=["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM", "OTM", "UN", "SAT"],
+        default="BasemapAT",
+        help="Map provider for the basemap (default: BasemapAT)",
+        dest="map_provider",
+    )
+    args = parser.parse_args()
+
+    stops, stop_times, trips, calendar, routes, shapes = [], [], [], [], [], []
+
+    for folder in tqdm.tqdm(args.input, desc="Loading data", unit=" folders", ascii=True, dynamic_ncols=True):
+        if os.path.isdir(folder):
+            stops.extend(utils.load_gtfs(folder, "stops"))
+            stop_times.extend(utils.load_gtfs(folder, "stop_times"))
+            trips.extend(utils.load_gtfs(folder, "trips"))
+            calendar.extend(utils.load_gtfs(folder, "calendar"))
+            routes.extend(utils.load_gtfs(folder, "routes"))
+            if args.map:
+                shapes.extend(utils.load_gtfs(folder, "shapes"))
+        else:
+            logger.error("Input folder %s does not exist", folder)
+
+    if args.map:
+        shapedict = utils.build_shapedict(shapes)
+
+    if args.mapping_json:
+        with open(args.mapping_json, "r", encoding="utf-8") as f:
+            hst_map = utils.load_hst_json(json.loads(f.read()))
+
+    stop_hierarchy = utils.build_stop_hierarchy(stops)
+    stop_hierarchy = utils.query_stop_names(stop_hierarchy, hst_map)
+    destinations = utils.build_dest_list(trips)
+    stopss = {stop.stop_name: stop.stop_id for stop in stop_hierarchy.values()}
+    stops = utils.build_list_index(stops, "stop_id")
+
+    logger.info("loaded data")
+
+    choices = sorted({stop.stop_name for stop in stop_hierarchy.values()})
+    while True:
+        choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
+        ourstop = stop_hierarchy[stopss[choice]]
+        compute(ourstop, stop_times, trips, calendar, routes, stops, args, destinations, shapedict)
 
 
 if __name__ == "__main__":
