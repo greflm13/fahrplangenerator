@@ -466,6 +466,8 @@ def main():
 
     if args.map:
         shapedict = utils.build_shapedict(shapes)
+    else:
+        shapedict = None
 
     if args.mapping_json:
         with open(args.mapping_json, "r", encoding="utf-8") as f:
@@ -474,7 +476,12 @@ def main():
     stop_hierarchy = utils.build_stop_hierarchy(stops)
     stop_hierarchy = utils.query_stop_names(stop_hierarchy, hst_map)
     destinations = utils.build_dest_list(trips)
-    stopss = {stop.stop_name: stop.stop_id for stop in stop_hierarchy.values()}
+    stopss = {}
+    for stop in stop_hierarchy.values():
+        if stop.stop_name not in stopss:
+            stopss[stop.stop_name] = [stop.stop_id]
+        else:
+            stopss[stop.stop_name].append(stop.stop_id)
     stops = utils.build_list_index(stops, "stop_id")
 
     logger.info("loaded data")
@@ -482,7 +489,18 @@ def main():
     choices = sorted({stop.stop_name for stop in stop_hierarchy.values()})
     while True:
         choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
-        ourstop = stop_hierarchy[stopss[choice]]
+        ourstop: HierarchyStop
+        if len(stopss[choice]) == 1:
+            ourstop = stop_hierarchy[stopss[choice][0]]
+        else:
+            combined_children = []
+            for stop_id in stopss[choice]:
+                stop = stop_hierarchy[stop_id]
+                if stop.children is not None:
+                    combined_children.extend(stop.children)
+            ourstop = stop_hierarchy[stopss[choice][0]]
+            ourstop.children = combined_children
+
         compute(ourstop, stop_times, trips, calendar, routes, stops, args, destinations, shapedict)
 
 
