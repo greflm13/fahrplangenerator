@@ -237,23 +237,27 @@ def compute(ourstop: HierarchyStop, stop_times, trips: list[dict], calendar, rou
         del ourstops[0]["children"]
     logger.info("computing our times")
     ourtimes = []
+    stopids = [stop["stop_id"] for stop in ourstops]
     for time in tqdm.tqdm(stop_times, desc="Finding stop times", unit=" stop times", ascii=True, dynamic_ncols=True):
-        if time["stop_id"] in [stop["stop_id"] for stop in ourstops] and time.get("pickup_type", "0") == "0":
+        if time["stop_id"] in stopids and time.get("pickup_type", "0") == "0":
             ourtimes.append(time)
     logger.info("computing our trips")
     ourtrips = []
+    times = [time["trip_id"] for time in ourtimes]
     for trip in tqdm.tqdm(trips, desc="Finding trips", unit=" trips", ascii=True, dynamic_ncols=True):
-        if trip["trip_id"] in [time["trip_id"] for time in ourtimes]:
+        if trip["trip_id"] in times:
             ourtrips.append(trip)
     logger.info("computing our services")
     ourservs = []
+    services = [trip["service_id"] for trip in ourtrips]
     for serv in tqdm.tqdm(calendar, desc="Finding services", unit=" services", ascii=True, dynamic_ncols=True):
-        if serv["service_id"] in [trip["service_id"] for trip in ourtrips]:
+        if serv["service_id"] in services:
             ourservs.append(serv)
     logger.info("computing our routes")
     ourroute = []
+    routeids = [trip["route_id"] for trip in ourtrips]
     for rout in tqdm.tqdm(routes, desc="Finding routes", unit=" routes", ascii=True, dynamic_ncols=True):
-        if rout["route_id"] in [trip["route_id"] for trip in ourtrips]:
+        if rout["route_id"] in routeids:
             ourroute.append(rout)
 
     logger.info("playing variable shuffle")
