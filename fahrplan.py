@@ -476,6 +476,8 @@ def main():
     if args.mapping_json:
         with open(args.mapping_json, "r", encoding="utf-8") as f:
             hst_map = utils.load_hst_json(json.loads(f.read()))
+    else:
+        hst_map = {}
 
     stop_hierarchy = utils.build_stop_hierarchy(stops)
     stop_hierarchy = utils.query_stop_names(stop_hierarchy, hst_map)
