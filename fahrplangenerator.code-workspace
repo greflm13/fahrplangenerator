@@ -27,17 +27,12 @@
                 ]
             },
             {
-                "name": "Python Debugger: build_loc_cache.py",
+                "name": "Python Debugger: db.py",
                 "type": "debugpy",
                 "request": "launch",
-                "program": "build_location_cache.py",
+                "program": "modules/db.py",
                 "console": "integratedTerminal",
-                "args": [
-                    "-i",
-                    "~/Documents/20251012-2010-at-styria-2025/grazholding-at/",
-                    "-j",
-                    "~/Documents/20251027-0109_hst_json_2025/haltestellen.json",
-                ]
+                "args": []
             }
         ]
     }
