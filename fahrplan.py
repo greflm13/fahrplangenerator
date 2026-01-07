@@ -1,32 +1,29 @@
+#!/usr/bin/env python
+
 import os
-import csv
-import copy
-import random
-import logging
+import json
 import argparse
 import tempfile
 
+import PIL.Image
 import tqdm
 import requests
 import questionary
 from rich_argparse import RichHelpFormatter
-from pypdf import PdfReader, PdfWriter
-from pythonjsonlogger import json as jsonlogger
 
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
-from reportlab.graphics import renderPDF
 from reportlab.lib import colors, pagesizes
-from svglib.svglib import svg2rlg, Drawing
+from reportlab.lib.utils import ImageReader
 
-if __package__ is None:
-    PACKAGE = ""
-else:
-    PACKAGE = __package__
-SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
-LOG_DIR = os.path.join(SCRIPTDIR, "logs")
-LATEST_LOG_FILE = os.path.join(LOG_DIR, "latest.jsonl")
+import modules.utils as utils
+
+from modules.map import draw_map
+from modules.logger import logger
+from modules.datatypes import HierarchyStop
+
+PIL.Image.MAX_IMAGE_PIXELS = 9331200000
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 pdfmetrics.registerFont(TTFont("header", "FiraSans-Black.ttf"))
@@ -34,128 +31,17 @@ pdfmetrics.registerFont(TTFont("hour", "FiraSans-Bold.ttf"))
 pdfmetrics.registerFont(TTFont("add", "FiraSans-Regular.ttf"))
 pdfmetrics.registerFont(TTFont("foot", "FiraSans-Thin.ttf"))
 
-os.makedirs(LOG_DIR, exist_ok=True)
-logger = logging.getLogger(name="defaultlogger")
-keys = [
-    "asctime",
-    "created",
-    "filename",
-    "funcName",
-    "levelname",
-    "levelno",
-    "lineno",
-    "module",
-    "msecs",
-    "message",
-    "name",
-    "pathname",
-    "process",
-    "processName",
-    "relativeCreated",
-    "thread",
-    "threadName",
-]
 
-custom_format = " ".join([f"%({i})s" for i in keys])
-formatter = jsonlogger.JsonFormatter(custom_format)
-
-log_handler = logging.FileHandler(LATEST_LOG_FILE)
-log_handler.setFormatter(formatter)
-
-logger.addHandler(log_handler)
-logger.setLevel(level=logging.INFO)
-
-
-def create_merged_pdf(pages: list[str], path: str):
-    output = PdfWriter()
-
-    for page in pages:
-        pdf = PdfReader(page)
-        output.add_page(pdf.pages[0])
-
-    output.write(path)
-
-
-def merge_dicts(a: dict[str, dict[str, dict[str, list[dict[str, str]]]]], b: dict[str, dict[str, dict[str, list[dict[str, str]]]]]):
-    c = copy.deepcopy(a)
-    for k, v in b.items():
-        if k in a:
-            for k2, v2 in v.items():
-                if k2 in a[k]:
-                    for k3, v3 in v2.items():
-                        if k3 in a[k][k2]:
-                            c[k][k2][k3].extend(v3)
-                        else:
-                            c[k][k2][k3] = v3
-                else:
-                    c[k][k2] = v2
-        else:
-            c[k] = v
-    return c
-
-
-def dict_set(lst: list[dict[str, str]]):
-    seen = []
-    setlike = []
-    for d in lst:
-        signature = {"time": d["time"], "line": d["line"], "dire": d["dire"]}
-        if signature not in seen:
-            seen.append(signature)
-            setlike.append(d)
-    return setlike
-
-
-def most_frequent(lst: list[str]):
-    counts = {i: lst.count(i) for i in set(lst)}
-    max_count = max(counts.values(), default=0)
-    if max_count == 1:
-        return lst[0]
-    return max(set(lst), key=lst.count, default="")
-
-
-def merge(lst: list[str]):
-    rl = []
-    for i in lst:
-        sp = i.split()
-        if len(sp[-1]) < 3:
-            sp.pop()
-        rl.append(" ".join(sp))
-    return rl
-
-
-def scale(drawing: Drawing, scaling_factor: float):
-    """
-    Scale a reportlab.graphics.shapes.Drawing()
-    object while maintaining the aspect ratio
-    """
-    scaling_x = scaling_factor
-    scaling_y = scaling_factor
-
-    drawing.width = drawing.minWidth() * scaling_x
-    drawing.height = drawing.height * scaling_y
-    drawing.scale(scaling_x, scaling_y)
-    return drawing
-
-
-def is_contrasting(color):
-    r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
-    brightness = (r * 299 + g * 587 + b * 114) / 1000
-    return brightness < 157  # Ensures enough contrast with white
-
-
-def is_vibrant(color):
-    r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
-    max_channel = max(r, g, b)
-    min_channel = min(r, g, b)
-    saturation = (max_channel - min_channel) / max_channel if max_channel else 0
-    return 0.9 > saturation > 0.2  # Ensures the color is not too grey
-
-
-def generate_contrasting_vibrant_color():
-    while True:
-        color = "#" + "".join(random.choice("0123456789abcdef") for _ in range(6))
-        if is_contrasting(color) and is_vibrant(color):
-            return color
+custom_style = questionary.Style(
+    [
+        ("question", "fg:#ff0000 bold"),
+        ("answer", "fg:#00ff00 bold"),
+        ("pointer", "fg:#0000ff bold"),
+        ("highlighted", "fg:#ffff00 bold"),
+        ("completion-menu", "bg:#000000"),
+        ("completion-menu.completion.current", "bg:#444444"),
+    ]
+)
 
 
 def addtimes(pdf: Canvas, daytimes: dict[str, list[dict[str, str]]], day: str, posy: float, accent: colors.Color, dest: str, addstops: dict[str, int] = {"num": 1}):
@@ -227,7 +113,7 @@ def addtimes(pdf: Canvas, daytimes: dict[str, list[dict[str, str]]], day: str, p
 def create_page(
     line: str,
     dest: str,
-    stop: dict[str, str],
+    stop: HierarchyStop,
     path: str,
     montimes: dict[str, list[dict[str, str]]],
     sattimes: dict[str, list[dict[str, str]]],
@@ -327,15 +213,8 @@ def create_page(
             y -= 10
 
     if isinstance(logo, tempfile._TemporaryFileWrapper):
-        drawing = svg2rlg(logo.name)
-        if isinstance(drawing, Drawing):
-            drawing = scale(drawing, 0.5)
-            renderPDF.draw(drawing, pdf, 1041, 15)
-        else:
-            logger.warning("Logo is not a drawing")
-            pdf.setFont("logo", 20)
-            pdf.setFillColor(colors.black)
-            pdf.drawRightString(x=1108, y=23.5, text="</srgn>")
+        image = ImageReader(logo.name)
+        pdf.drawImage(image, x=1041, y=15, width=80, height=30, preserveAspectRatio=True)
     elif isinstance(logo, str):
         pdf.setFont("logo", 20)
         pdf.setFillColor(colors.black)
@@ -343,91 +222,42 @@ def create_page(
 
     pdf.setFont("foot", 17)
     pdf.setFillColor(colors.black)
-    pdf.drawString(x=80, y=23.5, text=stop["stop_name"])
+    pdf.drawString(x=80, y=23.5, text=stop.stop_name)
 
     pdf.save()
     logger.info("Done.")
     return path
 
 
-def main():
-    parser = argparse.ArgumentParser(formatter_class=RichHelpFormatter)
-    parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", required=True, dest="input")
-    parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
-    parser.add_argument("-o", "--output", help="Output file", type=str, required=False, dest="output", default="fahrplan.pdf")
-    parser.add_argument("--no-logo", action="store_false", dest="logo")
-    args = parser.parse_args()
-
-    stops, stop_times, trips, calendar, routes = [], [], [], [], []
-
-    for folder in tqdm.tqdm(args.input, desc="Loading data", unit=" folders", ascii=True, dynamic_ncols=True):
-        if os.path.isdir(folder):
-            with open(os.path.join(folder, "stops.txt"), mode="r", encoding="utf-8-sig") as f:
-                stops.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-
-            with open(os.path.join(folder, "stop_times.txt"), mode="r", encoding="utf-8-sig") as f:
-                stop_times.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-
-            with open(os.path.join(folder, "trips.txt"), mode="r", encoding="utf-8-sig") as f:
-                trips.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-
-            with open(os.path.join(folder, "calendar.txt"), mode="r", encoding="utf-8-sig") as f:
-                calendar.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-
-            with open(os.path.join(folder, "routes.txt"), mode="r", encoding="utf-8-sig") as f:
-                routes.extend([dict(row.items()) for row in csv.DictReader(f, skipinitialspace=True)])
-    custom_style = questionary.Style(
-        [
-            ("question", "fg:#ff0000 bold"),  # Red and bold for the question
-            ("answer", "fg:#00ff00 bold"),  # Green and bold for the answer
-            ("pointer", "fg:#0000ff bold"),  # Blue and bold for the pointer
-            ("highlighted", "fg:#ffff00 bold"),  # Yellow and bold for highlighted text
-            ("completion-menu", "bg:#000000"),  # Black background for the suggestion box
-            ("completion-menu.completion.current", "bg:#444444"),  # Dark gray background for the selected suggestion
-        ]
-    )
-
-    # Fix parent stop names from children using the most common name removing platform suffixes like "1" and "B"
-    parent_stops = [stop for stop in stops if stop.get("parent_station", "") == ""]
-    for stop in tqdm.tqdm(parent_stops, desc="Fixing parent stop names", unit=" stops", ascii=True, dynamic_ncols=True):
-        child_names = [s["stop_name"] for s in stops if s.get("parent_station", "") == stop["stop_id"]]
-        if child_names:
-            child_name = most_frequent(merge(child_names))
-            if stop["stop_name"] not in child_name and child_name not in stop["stop_name"]:
-                child_name = child_name + " " + stop["stop_name"]
-            stop["stop_name"] = child_name
-    logger.info("loaded data")
-
-    stopss = {stop["stop_name"]: stop for stop in parent_stops}
-    choices = sorted({stop["stop_name"] for stop in parent_stops})
-    choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
-    ourstop = stopss[choice]
-
+def compute(ourstop: HierarchyStop, stop_times, trips: list[dict], calendar, routes: list[dict], stops: dict[str, dict], args, destinations: dict[str, dict[str, str]], shapedict):
     logger.info("computing our stops")
-
-    ourstops = [ourstop]
-    for stop in tqdm.tqdm(stops, desc="Finding stops", unit=" stops", ascii=True, dynamic_ncols=True):
-        if stop.get("parent_station", "") == ourstop["stop_id"]:
-            ourstops.append(stop)
+    ourstops = [ourstop.to_dict()]
+    if ourstop.children is not None:
+        ourstops.extend(ourstops[0]["children"])
+        del ourstops[0]["children"]
     logger.info("computing our times")
     ourtimes = []
+    stopids = [stop["stop_id"] for stop in ourstops]
     for time in tqdm.tqdm(stop_times, desc="Finding stop times", unit=" stop times", ascii=True, dynamic_ncols=True):
-        if time["stop_id"] in [stop["stop_id"] for stop in ourstops] and time.get("pickup_type", "0") == "0":
+        if time["stop_id"] in stopids and time.get("pickup_type", "0") == "0":
             ourtimes.append(time)
     logger.info("computing our trips")
     ourtrips = []
+    times = [time["trip_id"] for time in ourtimes]
     for trip in tqdm.tqdm(trips, desc="Finding trips", unit=" trips", ascii=True, dynamic_ncols=True):
-        if trip["trip_id"] in [time["trip_id"] for time in ourtimes]:
+        if trip["trip_id"] in times:
             ourtrips.append(trip)
     logger.info("computing our services")
     ourservs = []
+    services = [trip["service_id"] for trip in ourtrips]
     for serv in tqdm.tqdm(calendar, desc="Finding services", unit=" services", ascii=True, dynamic_ncols=True):
-        if serv["service_id"] in [trip["service_id"] for trip in ourtrips]:
+        if serv["service_id"] in services:
             ourservs.append(serv)
     logger.info("computing our routes")
     ourroute = []
+    routeids = [trip["route_id"] for trip in ourtrips]
     for rout in tqdm.tqdm(routes, desc="Finding routes", unit=" routes", ascii=True, dynamic_ncols=True):
-        if rout["route_id"] in [trip["route_id"] for trip in ourtrips]:
+        if rout["route_id"] in routeids:
             ourroute.append(rout)
 
     logger.info("playing variable shuffle")
@@ -436,26 +266,12 @@ def main():
         print(f'Stop "{ourstop}" not found!')
         return
 
-    stops = {}
-    stop_times = {}
-    trips = {}
-    calendar = {}
-    routes = {}
-
-    for stop in tqdm.tqdm(ourstops, desc="Indexing stops", unit=" stops", ascii=True, dynamic_ncols=True):
-        stops[stop["stop_id"]] = stop
-
-    for time in tqdm.tqdm(ourtimes, desc="Indexing stop times", unit=" stop times", ascii=True, dynamic_ncols=True):
-        stop_times[time["trip_id"]] = time
-
-    for trip in tqdm.tqdm(ourtrips, desc="Indexing trips", unit=" trips", ascii=True, dynamic_ncols=True):
-        trips[trip["trip_id"]] = trip
-
-    for serv in tqdm.tqdm(ourservs, desc="Indexing services", unit=" services", ascii=True, dynamic_ncols=True):
-        calendar[serv["service_id"]] = serv
-
-    for rout in tqdm.tqdm(ourroute, desc="Indexing routes", unit=" routes", ascii=True, dynamic_ncols=True):
-        routes[rout["route_id"]] = rout
+    selected_stops = utils.build_list_index(ourstops, "stop_id")
+    selected_stop_times = utils.build_list_index(ourtimes, "trip_id")
+    stop_times = utils.build_stop_times_index(stop_times)
+    selected_trips = utils.build_list_index(ourtrips, "trip_id")
+    calendar = utils.build_list_index(ourservs, "service_id")
+    selected_routes = utils.build_list_index(ourroute, "route_id")
 
     mon: list[dict[str, str]] = []
     sat: list[dict[str, str]] = []
@@ -466,36 +282,36 @@ def main():
             mon.append(
                 {
                     "dest": trip["trip_headsign"],
-                    "time": stop_times[trip["trip_id"]]["arrival_time"][:-3],
-                    "line": routes[trip["route_id"]]["route_short_name"],
-                    "dire": trips[trip["trip_id"]]["direction_id"],
-                    "stop": stops[stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
+                    "time": selected_stop_times[trip["trip_id"]]["arrival_time"][:-3],
+                    "line": trip["route_id"],
+                    "dire": selected_trips[trip["trip_id"]]["direction_id"],
+                    "stop": selected_stops[selected_stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
                 }
             )
         if calendar[trip["service_id"]]["saturday"] == "1":
             sat.append(
                 {
                     "dest": trip["trip_headsign"],
-                    "time": stop_times[trip["trip_id"]]["arrival_time"][:-3],
-                    "line": routes[trip["route_id"]]["route_short_name"],
-                    "dire": trips[trip["trip_id"]]["direction_id"],
-                    "stop": stops[stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
+                    "time": selected_stop_times[trip["trip_id"]]["arrival_time"][:-3],
+                    "line": trip["route_id"],
+                    "dire": selected_trips[trip["trip_id"]]["direction_id"],
+                    "stop": selected_stops[selected_stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
                 }
             )
         if calendar[trip["service_id"]]["sunday"] == "1":
             sun.append(
                 {
                     "dest": trip["trip_headsign"],
-                    "time": stop_times[trip["trip_id"]]["arrival_time"][:-3],
-                    "line": routes[trip["route_id"]]["route_short_name"],
-                    "dire": trips[trip["trip_id"]]["direction_id"],
-                    "stop": stops[stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
+                    "time": selected_stop_times[trip["trip_id"]]["arrival_time"][:-3],
+                    "line": trip["route_id"],
+                    "dire": selected_trips[trip["trip_id"]]["direction_id"],
+                    "stop": selected_stops[selected_stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
                 }
             )
 
-    mon = sorted(dict_set(mon), key=lambda x: x["time"])
-    sat = sorted(dict_set(sat), key=lambda x: x["time"])
-    sun = sorted(dict_set(sun), key=lambda x: x["time"])
+    mon = sorted(utils.dict_set(mon), key=lambda x: x["time"])
+    sat = sorted(utils.dict_set(sat), key=lambda x: x["time"])
+    sun = sorted(utils.dict_set(sun), key=lambda x: x["time"])
 
     mondict: dict[str, dict[str, dict[str, list[dict[str, str]]]]] = {}
     satdict: dict[str, dict[str, dict[str, list[dict[str, str]]]]] = {}
@@ -504,7 +320,7 @@ def main():
     for trip in tqdm.tqdm(mon, desc="Indexing Monday-Friday trips", unit=" trips", ascii=True, dynamic_ncols=True):
         if not mondict.get(trip["line"], False):
             mondict[trip["line"]] = {}
-        if not mondict.get(trip["line"]).get(f"d{trip['dire']}", False):
+        if not mondict.get(trip["line"], {}).get(f"d{trip['dire']}", False):
             mondict[trip["line"]][f"d{trip['dire']}"] = {}
         for i in range(0, 24):
             if not mondict[trip["line"]][f"d{trip['dire']}"].get(f"t{i:02}", False):
@@ -514,7 +330,7 @@ def main():
     for trip in tqdm.tqdm(sat, desc="Indexing Saturday trips", unit=" trips", ascii=True, dynamic_ncols=True):
         if not satdict.get(trip["line"], False):
             satdict[trip["line"]] = {}
-        if not satdict.get(trip["line"]).get(f"d{trip['dire']}", False):
+        if not satdict.get(trip["line"], {}).get(f"d{trip['dire']}", False):
             satdict[trip["line"]][f"d{trip['dire']}"] = {}
         for i in range(0, 24):
             if not satdict[trip["line"]][f"d{trip['dire']}"].get(f"t{i:02}", False):
@@ -524,7 +340,7 @@ def main():
     for trip in tqdm.tqdm(sun, desc="Indexing Sunday trips", unit=" trips", ascii=True, dynamic_ncols=True):
         if not sundict.get(trip["line"], False):
             sundict[trip["line"]] = {}
-        if not sundict.get(trip["line"]).get(f"d{trip['dire']}", False):
+        if not sundict.get(trip["line"], {}).get(f"d{trip['dire']}", False):
             sundict[trip["line"]][f"d{trip['dire']}"] = {}
         for i in range(0, 24):
             if not sundict[trip["line"]][f"d{trip['dire']}"].get(f"t{i:02}", False):
@@ -533,65 +349,165 @@ def main():
 
     pages: dict[str, dict[str, str | None]] = {}
 
-    lines = merge_dicts(merge_dicts(mondict, satdict), sundict)
+    lines = utils.merge_dicts(utils.merge_dicts(mondict, satdict), sundict)
 
     if args.logo:
         try:
             logger.info("getting logo")
-            res = requests.get("https://files.sorogon.eu/logo-fixed.svg")
-            tmpfile = tempfile.NamedTemporaryFile()
+            res = requests.get("https://files.sorogon.eu/logo.png")
+            tmpfile = tempfile.NamedTemporaryFile(suffix=".png")
             tmpfile.write(res.content)
             tmpfile.flush()
         except requests.exceptions.ConnectionError:
             logger.info("fallback to string logo")
             try:
                 pdfmetrics.registerFont(TTFont("logo", "BarlowCondensed_Thin.ttf"))
-            except:
-                pdfmetrics.registerFont(TTFont("logo", "FiraSans-Thin.ttf"))
+            except Exception:
+                try:
+                    pdfmetrics.registerFont(TTFont("logo", "BarlowCondensed-Thin.ttf"))
+                except Exception:
+                    pdfmetrics.registerFont(TTFont("logo", "FiraSans-Thin.ttf"))
             tmpfile = "</srgn>"
     else:
         tmpfile = None
 
-    for line, dires in tqdm.tqdm(lines.items(), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True):
-        if args.color == "random":
-            color = generate_contrasting_vibrant_color()
+    try:
+        tmpdir = tempfile.mkdtemp()
+        for line, dires in tqdm.tqdm(lines.items(), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True):
+            if args.color == "random":
+                color = utils.generate_contrasting_vibrant_color()
+            else:
+                color = args.color
+            if not pages.get(line, False):
+                pages[line] = {}
+            for k in dires.keys():
+                dest = destinations[line][k]
+                if dest != ourstop.stop_name:
+                    page = pages.get(line, {}).get(k, {})
+                    if not isinstance(page, str):
+                        page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
+                    pages[line][k] = create_page(
+                        selected_routes[line]["route_short_name"],
+                        dest,
+                        ourstop,
+                        page,
+                        mondict.get(line, {}).get(k, {}),
+                        satdict.get(line, {}).get(k, {}),
+                        sundict.get(line, {}).get(k, {}),
+                        color,
+                        tmpfile,
+                    )
+                    if args.map:
+                        mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
+                        pages[line][k + "map"] = draw_map(
+                            page=mappage,
+                            stop=ourstop,
+                            logo=tmpfile,
+                            routes=utils.prepare_linedraw_info(shapedict, stop_times, ourtrips, selected_routes, stops, line, k, [stop["stop_id"] for stop in ourstops]),
+                            color=color,
+                            label_rotation=15,
+                            tmpdir=tmpdir,
+                            map_provider=args.map_provider,
+                            dpi=args.map_dpi,
+                        )
+
+        pagelst: list[str] = []
+        for line in tqdm.tqdm(pages.values(), desc="Collecting pages", unit=" lines", ascii=True, dynamic_ncols=True):
+            for dire in line.values():
+                if dire is not None:
+                    pagelst.append(dire)
+
+        utils.create_merged_pdf(pagelst, args.output)
+
+        for line in pages.values():
+            for dire in line.values():
+                if dire is not None:
+                    os.remove(dire)
+    finally:
+        for file in os.listdir(tmpdir):
+            try:
+                os.remove(file)
+            except Exception:
+                pass
+        try:
+            os.removedirs(tmpdir)
+        except Exception:
+            pass
+
+
+def main():
+    parser = argparse.ArgumentParser(formatter_class=RichHelpFormatter)
+    parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", required=True, dest="input")
+    parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
+    parser.add_argument("-o", "--output", help="Output file", type=str, required=False, dest="output", default="fahrplan.pdf")
+    parser.add_argument("-m", "--map", help="Generate maps", action="store_true", dest="map")
+    parser.add_argument("-j", "--stop-name-json", help="Stop name mapping json", required=False, type=str, dest="mapping_json")
+    parser.add_argument("--dpi", help="map dpi", type=int, dest="map_dpi")
+    parser.add_argument("--no-logo", action="store_false", dest="logo")
+    parser.add_argument(
+        "--map-provider",
+        type=str,
+        choices=["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM", "OTM", "UN", "SAT"],
+        default="BasemapAT",
+        help="Map provider for the basemap (default: BasemapAT)",
+        dest="map_provider",
+    )
+    args = parser.parse_args()
+
+    stops, stop_times, trips, calendar, routes, shapes = [], [], [], [], [], []
+
+    for folder in tqdm.tqdm(args.input, desc="Loading data", unit=" folders", ascii=True, dynamic_ncols=True):
+        if os.path.isdir(folder):
+            stops.extend(utils.load_gtfs(folder, "stops"))
+            stop_times.extend(utils.load_gtfs(folder, "stop_times"))
+            trips.extend(utils.load_gtfs(folder, "trips"))
+            calendar.extend(utils.load_gtfs(folder, "calendar"))
+            routes.extend(utils.load_gtfs(folder, "routes"))
+            if args.map:
+                shapes.extend(utils.load_gtfs(folder, "shapes"))
         else:
-            color = args.color
-        if not pages.get(line, False):
-            pages[line] = {}
-        for k in dires.keys():
-            destlist = []
-            for time in mondict.get(line, satdict.get(line, sundict.get(line, {}))).get(k, satdict.get(line, {}).get(k, sundict.get(line, {}).get(k))).values():
-                destlist.extend([t["dest"] for t in time])
-            dest = most_frequent(destlist)
-            if dest != ourstop:
-                page = pages.get(line, {}).get(k, {})
-                if page == {}:
-                    page = tempfile.mkstemp(suffix=".pdf")[1]
-                pages[line][k] = create_page(
-                    line,
-                    dest,
-                    ourstop,
-                    page,
-                    mondict.get(line, {}).get(k, {}),
-                    satdict.get(line, {}).get(k, {}),
-                    sundict.get(line, {}).get(k, {}),
-                    color,
-                    tmpfile,
-                )
+            logger.error("Input folder %s does not exist", folder)
 
-    pagelst: list[str] = []
-    for line in tqdm.tqdm(pages.values(), desc="Collecting pages", unit=" lines", ascii=True, dynamic_ncols=True):
-        for dire in line.values():
-            if dire is not None:
-                pagelst.append(dire)
+    if args.map:
+        shapedict = utils.build_shapedict(shapes)
+    else:
+        shapedict = None
 
-    create_merged_pdf(pagelst, args.output)
+    if args.mapping_json:
+        with open(args.mapping_json, "r", encoding="utf-8") as f:
+            hst_map = utils.load_hst_json(json.loads(f.read()))
+    else:
+        hst_map = {}
 
-    for line in pages.values():
-        for dire in line.values():
-            if dire is not None:
-                os.remove(dire)
+    stop_hierarchy = utils.build_stop_hierarchy(stops)
+    stop_hierarchy = utils.query_stop_names(stop_hierarchy, hst_map)
+    destinations = utils.build_dest_list(trips)
+    stopss = {}
+    for stop in stop_hierarchy.values():
+        if stop.stop_name not in stopss:
+            stopss[stop.stop_name] = [stop.stop_id]
+        else:
+            stopss[stop.stop_name].append(stop.stop_id)
+    stops = utils.build_list_index(stops, "stop_id")
+
+    logger.info("loaded data")
+
+    choices = sorted({stop.stop_name for stop in stop_hierarchy.values()})
+    while True:
+        choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
+        ourstop: HierarchyStop
+        if len(stopss[choice]) == 1:
+            ourstop = stop_hierarchy[stopss[choice][0]]
+        else:
+            combined_children = []
+            for stop_id in stopss[choice]:
+                stop = stop_hierarchy[stop_id]
+                if stop.children is not None:
+                    combined_children.extend(stop.children)
+            ourstop = stop_hierarchy[stopss[choice][0]]
+            ourstop.children = combined_children
+
+        compute(ourstop, stop_times, trips, calendar, routes, stops, args, destinations, shapedict)
 
 
 if __name__ == "__main__":
