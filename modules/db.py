@@ -15,7 +15,7 @@ con.row_factory = namedtuple_factory
 cur = con.cursor()
 
 
-def load_gtfs(folder: str) -> None:
+def load_gtfs(folder: str, append=True) -> None:
     """Load GTFS data."""
     if os.path.isdir(folder):
         files = os.listdir(folder)
@@ -27,16 +27,32 @@ def load_gtfs(folder: str) -> None:
                     csvdata = csv.reader(f, skipinitialspace=True)
                     csvlines = []
                     for row in csvdata:
-                        csvlines.append(row)
+                        csvlines.append(tuple(row))
                     header = csvlines[0]
                     data = csvlines[1:]
-                    lines = []
+                    amount = ",".join(["?"] * len(header))
+                    if not append:
+                        con.execute(f"DROP TABLE IF EXISTS {typ}")
                     con.execute(f"CREATE TABLE IF NOT EXISTS {typ}({','.join(header)})")
-                    for line in data:
-                        line = "'" + "','".join(line) + "'"
-                        lines.append(line)
-                    con.executemany(f"INSERT INTO {typ} VALUES (?)", data)
+                    con.executemany(f"INSERT INTO {typ} VALUES ({amount})", data)
                     con.commit()
 
 
-load_gtfs("/home/user/Documents/20251217-0224_gtfs_evu_2026")
+load_gtfs("/home/user/Documents/20251231-0159_gtfs_evu_2026")
+
+
+def get_table_data(table: str):
+    """Get all data from a table."""
+    cur.execute(f"SELECT * FROM {table}")
+    return cur.fetchall()
+
+
+def get_filtered_data(table: str, column: str, value):
+    """Get filtered data from a table."""
+    cur.execute(f"SELECT * FROM {table} WHERE {column} = ?", (value,))
+    return cur.fetchall()
+
+
+stops = get_filtered_data("stops", "stop_name", "Weststeiermark Bahnhof")
+for stop in stops:
+    print(stop)
