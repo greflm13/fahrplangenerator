@@ -18,6 +18,7 @@ from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
 
 import modules.utils as utils
+import modules.db as db
 
 from modules.map import draw_map
 from modules.logger import logger
@@ -229,36 +230,24 @@ def create_page(
     return path
 
 
-def compute(ourstop: HierarchyStop, stop_times, trips: list[dict], calendar, routes: list[dict], stops: dict[str, dict], args, destinations: dict[str, dict[str, str]], shapedict):
+def compute(ourstop: HierarchyStop, stops: dict[str, dict], args, destinations: dict[str, dict[str, str]], shapedict):
     logger.info("computing our stops")
     ourstops = [ourstop.to_dict()]
     if ourstop.children is not None:
         ourstops.extend(ourstops[0]["children"])
         del ourstops[0]["children"]
     logger.info("computing our times")
-    ourtimes = []
     stopids = [stop["stop_id"] for stop in ourstops]
-    for time in tqdm.tqdm(stop_times, desc="Finding stop times", unit=" stop times", ascii=True, dynamic_ncols=True):
-        if time["stop_id"] in stopids and time.get("pickup_type", "0") == "0":
-            ourtimes.append(time)
+    ourtimes = db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
     logger.info("computing our trips")
-    ourtrips = []
-    times = [time["trip_id"] for time in ourtimes]
-    for trip in tqdm.tqdm(trips, desc="Finding trips", unit=" trips", ascii=True, dynamic_ncols=True):
-        if trip["trip_id"] in times:
-            ourtrips.append(trip)
+    times = [time.trip_id for time in ourtimes]
+    ourtrips = db.get_in_filtered_data("trips", column="trip_id", values=times)
     logger.info("computing our services")
-    ourservs = []
-    services = [trip["service_id"] for trip in ourtrips]
-    for serv in tqdm.tqdm(calendar, desc="Finding services", unit=" services", ascii=True, dynamic_ncols=True):
-        if serv["service_id"] in services:
-            ourservs.append(serv)
+    services = [trip.service_id for trip in ourtrips]
+    ourservs = db.get_in_filtered_data("calendar", column="service_id", values=services)
     logger.info("computing our routes")
-    ourroute = []
-    routeids = [trip["route_id"] for trip in ourtrips]
-    for rout in tqdm.tqdm(routes, desc="Finding routes", unit=" routes", ascii=True, dynamic_ncols=True):
-        if rout["route_id"] in routeids:
-            ourroute.append(rout)
+    routeids = [trip.route_id for trip in ourtrips]
+    ourroute = db.get_in_filtered_data("routes", column="route_id", values=routeids)
 
     logger.info("playing variable shuffle")
 
@@ -268,7 +257,7 @@ def compute(ourstop: HierarchyStop, stop_times, trips: list[dict], calendar, rou
 
     selected_stops = utils.build_list_index(ourstops, "stop_id")
     selected_stop_times = utils.build_list_index(ourtimes, "trip_id")
-    stop_times = utils.build_stop_times_index(stop_times)
+    stop_times = utils.build_stop_times_index(db.get_table_data("stop_times"))
     selected_trips = utils.build_list_index(ourtrips, "trip_id")
     calendar = utils.build_list_index(ourservs, "service_id")
     selected_routes = utils.build_list_index(ourroute, "route_id")
@@ -278,34 +267,34 @@ def compute(ourstop: HierarchyStop, stop_times, trips: list[dict], calendar, rou
     sun: list[dict[str, str]] = []
 
     for trip in tqdm.tqdm(ourtrips, desc="Sorting trips", unit=" trips", ascii=True, dynamic_ncols=True):
-        if calendar[trip["service_id"]]["monday"] == "1":
+        if calendar[trip.service_id]["monday"] == "1":
             mon.append(
                 {
-                    "dest": trip["trip_headsign"],
-                    "time": selected_stop_times[trip["trip_id"]]["arrival_time"][:-3],
-                    "line": trip["route_id"],
-                    "dire": selected_trips[trip["trip_id"]]["direction_id"],
-                    "stop": selected_stops[selected_stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
+                    "dest": trip.trip_headsign,
+                    "time": selected_stop_times[trip.trip_id]["arrival_time"][:-3],
+                    "line": trip.route_id,
+                    "dire": selected_trips[trip.trip_id]["direction_id"],
+                    "stop": selected_stops[selected_stop_times[trip.trip_id]["stop_id"]]["stop_name"],
                 }
             )
-        if calendar[trip["service_id"]]["saturday"] == "1":
+        if calendar[trip.service_id]["saturday"] == "1":
             sat.append(
                 {
-                    "dest": trip["trip_headsign"],
-                    "time": selected_stop_times[trip["trip_id"]]["arrival_time"][:-3],
-                    "line": trip["route_id"],
-                    "dire": selected_trips[trip["trip_id"]]["direction_id"],
-                    "stop": selected_stops[selected_stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
+                    "dest": trip.trip_headsign,
+                    "time": selected_stop_times[trip.trip_id]["arrival_time"][:-3],
+                    "line": trip.route_id,
+                    "dire": selected_trips[trip.trip_id]["direction_id"],
+                    "stop": selected_stops[selected_stop_times[trip.trip_id]["stop_id"]]["stop_name"],
                 }
             )
-        if calendar[trip["service_id"]]["sunday"] == "1":
+        if calendar[trip.service_id]["sunday"] == "1":
             sun.append(
                 {
-                    "dest": trip["trip_headsign"],
-                    "time": selected_stop_times[trip["trip_id"]]["arrival_time"][:-3],
-                    "line": trip["route_id"],
-                    "dire": selected_trips[trip["trip_id"]]["direction_id"],
-                    "stop": selected_stops[selected_stop_times[trip["trip_id"]]["stop_id"]]["stop_name"],
+                    "dest": trip.trip_headsign,
+                    "time": selected_stop_times[trip.trip_id]["arrival_time"][:-3],
+                    "line": trip.route_id,
+                    "dire": selected_trips[trip.trip_id]["direction_id"],
+                    "stop": selected_stops[selected_stop_times[trip.trip_id]["stop_id"]]["stop_name"],
                 }
             )
 
@@ -403,7 +392,7 @@ def compute(ourstop: HierarchyStop, stop_times, trips: list[dict], calendar, rou
                             page=mappage,
                             stop=ourstop,
                             logo=tmpfile,
-                            routes=utils.prepare_linedraw_info(shapedict, stop_times, ourtrips, selected_routes, stops, line, k, [stop["stop_id"] for stop in ourstops]),
+                            routes=utils.prepare_linedraw_info(shapedict, stop_times, ourtrips, stops, line, k, [stop["stop_id"] for stop in ourstops]),
                             color=color,
                             label_rotation=15,
                             tmpdir=tmpdir,
@@ -437,11 +426,12 @@ def compute(ourstop: HierarchyStop, stop_times, trips: list[dict], calendar, rou
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=RichHelpFormatter)
-    parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", required=True, dest="input")
+    parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", default=[], required=False, dest="input")
     parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
     parser.add_argument("-o", "--output", help="Output file", type=str, required=False, dest="output", default="fahrplan.pdf")
     parser.add_argument("-m", "--map", help="Generate maps", action="store_true", dest="map")
     parser.add_argument("-j", "--stop-name-json", help="Stop name mapping json", required=False, type=str, dest="mapping_json")
+    parser.add_argument("-r", "--reset-db", help="Reset local database", action="store_true", dest="reset_db")
     parser.add_argument("--dpi", help="map dpi", type=int, dest="map_dpi")
     parser.add_argument("--no-logo", action="store_false", dest="logo")
     parser.add_argument(
@@ -454,33 +444,34 @@ def main():
     )
     args = parser.parse_args()
 
-    stops, stop_times, trips, calendar, routes, shapes = [], [], [], [], [], []
+    if args.reset_db:
+        append = False
+    else:
+        append = True
 
     for folder in tqdm.tqdm(args.input, desc="Loading data", unit=" folders", ascii=True, dynamic_ncols=True):
         if os.path.isdir(folder):
-            stops.extend(utils.load_gtfs(folder, "stops"))
-            stop_times.extend(utils.load_gtfs(folder, "stop_times"))
-            trips.extend(utils.load_gtfs(folder, "trips"))
-            calendar.extend(utils.load_gtfs(folder, "calendar"))
-            routes.extend(utils.load_gtfs(folder, "routes"))
-            if args.map:
-                shapes.extend(utils.load_gtfs(folder, "shapes"))
+            db.load_gtfs(folder, append=append)
+            append = True
         else:
             logger.error("Input folder %s does not exist", folder)
 
     if args.map:
+        print("loading shapes")
+        shapes = db.get_table_data("shapes")
         shapedict = utils.build_shapedict(shapes)
+        del shapes
     else:
         shapedict = None
 
     if args.mapping_json:
-        with open(args.mapping_json, "r", encoding="utf-8") as f:
-            hst_map = utils.load_hst_json(json.loads(f.read()))
-    else:
-        hst_map = {}
+        db.load_hst_json(args.mapping_json, append=not args.reset_db)
+
+    stops = db.get_table_data("stops")
+    trips = db.get_table_data("trips")
 
     stop_hierarchy = utils.build_stop_hierarchy(stops)
-    stop_hierarchy = utils.query_stop_names(stop_hierarchy, hst_map)
+    stop_hierarchy = utils.query_stop_names(stop_hierarchy)
     destinations = utils.build_dest_list(trips)
     stopss = {}
     for stop in stop_hierarchy.values():
@@ -507,7 +498,7 @@ def main():
             ourstop = stop_hierarchy[stopss[choice][0]]
             ourstop.children = combined_children
 
-        compute(ourstop, stop_times, trips, calendar, routes, stops, args, destinations, shapedict)
+        compute(ourstop, stops, args, destinations, shapedict)
 
 
 if __name__ == "__main__":

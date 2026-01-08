@@ -1,39 +1,67 @@
 {
-    "folders": [
-        {
-            "path": "./",
-            "name": "fahrplangenerator"
-        }
-    ],
-    "settings": {
-        "ansible.python.interpreterPath": "/home/user/.pyenv/versions/fahrplangenerator/bin/python",
-        "python.analysis.typeCheckingMode": "basic"
-    },
-    "launch": {
-        "version": "0.2.0",
-        "configurations": [
-            {
-                "name": "Python Debugger: fahrplan.py",
-                "type": "debugpy",
-                "request": "launch",
-                "program": "fahrplan.py",
-                "console": "integratedTerminal",
-                "args": [
-                    "-i",
-                    "~/Documents/20251216-0307_gtfs_evu_2026/",
-                    "-m",
-                    // "-j",
-                    // "~/Documents/20251027-0109_hst_json_2025/steige.json",
-                ]
-            },
-            {
-                "name": "Python Debugger: db.py",
-                "type": "debugpy",
-                "request": "launch",
-                "program": "modules/db.py",
-                "console": "integratedTerminal",
-                "args": []
-            }
-        ]
+  "folders": [
+    {
+      "path": "./",
+      "name": "fahrplangenerator"
     }
+  ],
+  "settings": {
+    "ansible.python.interpreterPath": "/home/user/.pyenv/versions/fahrplangenerator/bin/python",
+    "python.analysis.typeCheckingMode": "basic",
+    "ruff.lineLength": 180,
+    "python-envs.pythonProjects": [
+      {
+        "path": "",
+        "envManager": "ms-python.python:pyenv",
+        "packageManager": "ms-python.python:pip"
+      }
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Python Debugger: fahrplan.py",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "fahrplan.py",
+        "console": "integratedTerminal",
+        "python": "/home/user/.pyenv/versions/fahrplangenerator/bin/python",
+        "args": [
+          // "-i",
+          // "/home/user/Documents/20260102-2110-at-styria-2026/gkb-at",
+          // "-i",
+          // "/home/user/Documents/20260102-2110-at-styria-2026/grazholding-at",
+          // "-i",
+          // "/home/user/Documents/20260102-2110-at-styria-2026/grazverbundlinie-at",
+          // "-i",
+          // "/home/user/Documents/20260102-2110-at-styria-2026/regiobusverbundlinie-at",
+          // "-i",
+          // "/home/user/Documents/20260102-2110-at-styria-2026/regionalbusverbundlinie-at",
+          // "-i",
+          // "/home/user/Documents/20260102-2110-at-styria-2026/schiffverbundlinie-at",
+          // "-i",
+          // "/home/user/Documents/20260102-2110-at-styria-2026/seilbahnverbundlinie-at",
+          // "-i",
+          // "/home/user/Documents/20260102-2110-at-styria-2026/stb-at",
+          // "-i",
+          // "/home/user/Documents/20260102-2110-at-styria-2026/stwl-at",
+          // "-i",
+          // "/home/user/Documents/20251231-0159_gtfs_evu_2026",
+          // "-r",
+          "-m",
+          // "-j",
+          // "~/Documents/20251027-0109_hst_json_2025/steige.json"
+        ]
+      },
+      {
+        "name": "Python Debugger: db.py",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "modules/db.py",
+        "console": "integratedTerminal",
+        "args": []
+      }
+    ]
+  }
 }

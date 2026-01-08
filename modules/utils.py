@@ -17,6 +17,7 @@ from shapely.geometry import shape, Point
 
 from modules.logger import logger
 from modules.datatypes import HierarchyStop
+from modules.db import update_location_cache, get_table_data, get_in_filtered_data
 
 if __package__ is None:
     PACKAGE = ""
@@ -48,31 +49,34 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
     return data
 
 
-def build_shapedict(shapes: List[Dict]) -> Dict[str, List[Point]]:
+def build_shapedict(shapes: List) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = {}
     for shapeline in tqdm.tqdm(shapes, desc="Building shapes", unit=" points", ascii=True, dynamic_ncols=True):
-        sid = shapeline["shape_id"]
+        sid = shapeline.shape_id
         if sid not in shapedict:
             logger.debug("Processing shape ID: %s", sid)
             shapedict[sid] = []
-        shapedict[sid].append(Point(shapeline["shape_pt_lon"], shapeline["shape_pt_lat"], shapeline["shape_dist_traveled"]))
+        shapedict[sid].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
     return shapedict
 
 
-def build_list_index(list: List[Dict], index: str) -> Dict[str, Dict]:
+def build_list_index(list: List, index: str) -> Dict[str, Dict]:
     """Build an index from a list of dictionaries based on a specified key."""
     data: Dict[str, Dict] = {}
     for item in list:
-        data[item[index]] = item
+        if isinstance(item, dict):
+            data[item[index]] = item
+        else:
+            data[getattr(item, index)] = item._asdict()
     return data
 
 
-def build_stop_times_index(stop_times: List[Dict]) -> Dict[str, List[Dict]]:
+def build_stop_times_index(stop_times: List) -> Dict[str, List[Dict]]:
     """Index stop_times by trip_id for quick lookup."""
     idx: Dict[str, List[Dict]] = {}
     for st in stop_times:
-        tid = st.get("trip_id")
+        tid = getattr(st, "trip_id")
         if not tid:
             continue
         idx.setdefault(tid, []).append(st)
@@ -84,7 +88,6 @@ def prepare_linedraw_info(
     shapedict: Dict[str, List[Point]],
     stop_times: Dict[str, List[Dict]],
     trips: List[Dict],
-    routes: Dict[str, Dict],
     stops: Dict[str, Dict[str, str]],
     line,
     direction,
@@ -241,48 +244,54 @@ def find_correct_stop_name(stops):
             stopss[stop["stop_name"]] = stop
 
 
-def build_stop_hierarchy(stops: List[Dict[str, str]]) -> Dict[str, HierarchyStop]:
+def build_stop_hierarchy(stops: List) -> Dict[str, HierarchyStop]:
     hierarchy: Dict[str, HierarchyStop] = {}
     for stop in stops:
-        if stop["parent_station"] == "":
-            if stop["stop_id"] in hierarchy.keys():
-                children = hierarchy[stop["stop_id"]].children
-                hierarchy[stop["stop_id"]] = HierarchyStop.from_dict(stop)
-                hierarchy[stop["stop_id"]].children = children
+        if stop.parent_station == "":
+            if stop.stop_id in hierarchy.keys():
+                children = hierarchy[stop.stop_id].children
+                hierarchy[stop.stop_id] = HierarchyStop.from_dict(stop._asdict())
+                hierarchy[stop.stop_id].children = children
             else:
-                hierarchy[stop["stop_id"]] = HierarchyStop.from_dict(stop)
+                hierarchy[stop.stop_id] = HierarchyStop.from_dict(stop._asdict())
         else:
-            if stop["parent_station"] not in hierarchy.keys():
-                hierarchy[stop["parent_station"]] = HierarchyStop(stop_id="", stop_name="", stop_lat=0, stop_lon=0, children=[HierarchyStop.from_dict(stop)])
-            elif hierarchy[stop["parent_station"]].children is None:
-                hierarchy[stop["parent_station"]].children = [HierarchyStop.from_dict(stop)]
+            if stop.parent_station not in hierarchy.keys():
+                hierarchy[stop.parent_station] = HierarchyStop(stop_id="", stop_name="", stop_lat=0, stop_lon=0, children=[HierarchyStop.from_dict(stop._asdict())])
+            elif hierarchy[stop.parent_station].children is None:
+                hierarchy[stop.parent_station].children = [HierarchyStop.from_dict(stop._asdict())]
             else:
-                hierarchy[stop["parent_station"]].children.append(HierarchyStop.from_dict(stop))  # pyright: ignore[reportOptionalMemberAccess]
+                hierarchy[stop.parent_station].children.append(HierarchyStop.from_dict(stop._asdict()))  # pyright: ignore[reportOptionalMemberAccess]
     return hierarchy
 
 
 def get_place(coords: Tuple[float, float]):
-    return geolocator.reverse(coords).raw["properties"]  # type: ignore
+    try:
+        return geolocator.reverse(coords).raw["properties"]  # type: ignore
+    except Exception:
+        return {}
 
 
-def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop], hst_map=None) -> Dict[str, HierarchyStop]:
-    if hst_map is None:
-        hst_map = {}
-    loccache = os.path.join(CACHEDIR, "location_cache")
-    os.makedirs(CACHEDIR, exist_ok=True)
-    if not os.path.exists(loccache):
-        with open(loccache, "x", encoding="utf-8") as f:
-            f.write(json.dumps({}))
-    with open(loccache, "r", encoding="utf-8") as f:
-        locationcache = json.loads(f.read())
+def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, HierarchyStop]:
+    try:
+        locationcache = get_table_data("location_cache")
+        locationcache = {entry[0]: entry[1] for entry in locationcache}
+    except Exception:
+        locationcache = {}
     for stop in tqdm.tqdm(stop_hierarchy.values(), desc="Querying stop names", unit=" stops", ascii=True, dynamic_ncols=True):
+        if stop.stop_id in locationcache.keys():
+            stop.stop_name = locationcache[stop.stop_id]
+            continue
         if stop.children is not None:
             child_ids = [child.stop_id for child in stop.children]
             child_names = [child.stop_name for child in stop.children]
         else:
             child_ids = []
             child_names = [""]
-        if stop.stop_id not in locationcache.keys() and stop.stop_id not in hst_map.keys() and not any(child in hst_map for child in child_ids):
+        if (
+            stop.stop_id not in locationcache.keys()
+            and stop.stop_id not in get_table_data("hst", filters={"stg_globid": stop.stop_id})
+            and not get_in_filtered_data("hst", "stg_globid", child_ids)
+        ):
             if stop.stop_name not in child_names and stop.stop_name not in child_names[0]:
                 if stop.stop_id not in locationcache:
                     found = False
@@ -312,25 +321,20 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop], hst_map=None) -> 
             else:
                 locationcache[stop.stop_id] = stop.stop_name
             stop.stop_name = locationcache[stop.stop_id]
-            with open(loccache, "w", encoding="utf-8") as f:
-                f.write(json.dumps(locationcache, indent=2))
-        elif stop.stop_id in hst_map.keys():
-            stop.stop_name = hst_map[stop.stop_id]
-            locationcache[stop.stop_id] = hst_map[stop.stop_id]
-        elif any(child in hst_map for child in child_ids):
+        elif get_table_data("hst", filters={"stg_globid": stop.stop_id}):
+            stop.stop_name = get_table_data("hst", columns=["stg_name"], filters={"stg_globid": stop.stop_id})[0][0]
+            locationcache[stop.stop_id] = stop.stop_name
+        elif get_in_filtered_data("hst", "stg_globid", child_ids):
             for child in child_ids:
-                if child in hst_map:
-                    stop.stop_name = hst_map[child]
-                    locationcache[stop.stop_id] = hst_map[child]
+                if get_table_data("hst", filters={"stg_globid": child}):
+                    stop.stop_name = get_table_data("hst", columns=["stg_name"], filters={"stg_globid": child})[0][0]
+                    locationcache[stop.stop_id] = stop.stop_name
                     break
-        else:
-            stop.stop_name = locationcache[stop.stop_id]
         if stop.children is not None:
             for child in stop.children:
                 locationcache[child.stop_id] = locationcache[stop.stop_id]
 
-    with open(loccache, "w", encoding="utf-8") as f:
-        f.write(json.dumps(locationcache, indent=2))
+        update_location_cache(locationcache)
 
     return stop_hierarchy
 
@@ -352,16 +356,16 @@ def load_hst_json(json: Dict):
     return id_mapping
 
 
-def build_dest_list(lst: List[Dict]) -> Dict[str, Dict[str, str]]:
+def build_dest_list(lst: List) -> Dict[str, Dict[str, str]]:
     destinations = {}
     routes = {}
     for trip in lst:
-        if trip["route_id"] not in routes:
-            routes[trip["route_id"]] = {f"d{trip['direction_id']}": [trip["trip_headsign"]]}
-        elif f"d{trip['direction_id']}" not in routes[trip["route_id"]]:
-            routes[trip["route_id"]][f"d{trip['direction_id']}"] = [trip["trip_headsign"]]
+        if trip.route_id not in routes:
+            routes[trip.route_id] = {f"d{trip.direction_id}": [trip.trip_headsign]}
+        elif f"d{trip.direction_id}" not in routes[trip.route_id]:
+            routes[trip.route_id][f"d{trip.direction_id}"] = [trip.trip_headsign]
         else:
-            routes[trip["route_id"]][f"d{trip['direction_id']}"].append(trip["trip_headsign"])
+            routes[trip.route_id][f"d{trip.direction_id}"].append(trip.trip_headsign)
     for route, directions in routes.items():
         for direction, values in directions.items():
             if route not in destinations:
