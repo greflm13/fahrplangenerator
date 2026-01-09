@@ -242,23 +242,13 @@ def find_correct_stop_name(stops):
             stopss[stop["stop_name"]] = stop
 
 
-def build_stop_hierarchy(stops: Iterable) -> Dict[str, HierarchyStop]:
+def build_stop_hierarchy() -> Dict[str, HierarchyStop]:
     hierarchy: Dict[str, HierarchyStop] = {}
-    for stop in stops:
-        if stop.parent_station == "":
-            if stop.stop_id in hierarchy.keys():
-                children = hierarchy[stop.stop_id].children
-                hierarchy[stop.stop_id] = HierarchyStop.from_dict(stop._asdict())
-                hierarchy[stop.stop_id].children = children
-            else:
-                hierarchy[stop.stop_id] = HierarchyStop.from_dict(stop._asdict())
-        else:
-            if stop.parent_station not in hierarchy.keys():
-                hierarchy[stop.parent_station] = HierarchyStop(stop_id="", stop_name="", stop_lat=0, stop_lon=0, children=[HierarchyStop.from_dict(stop._asdict())])
-            elif hierarchy[stop.parent_station].children is None:
-                hierarchy[stop.parent_station].children = [HierarchyStop.from_dict(stop._asdict())]
-            else:
-                hierarchy[stop.parent_station].children.append(HierarchyStop.from_dict(stop._asdict()))  # pyright: ignore[reportOptionalMemberAccess]
+    for parent in get_table_data("stops", filters={"parent_station": ""}):
+        hierarchy[parent.stop_id] = HierarchyStop.from_dict(parent._asdict())
+        children = get_table_data("stops", filters={"parent_station": parent.stop_id})
+        if len(children) > 0:
+            hierarchy[parent.stop_id].children = [HierarchyStop.from_dict(child._asdict()) for child in children]
     return hierarchy
 
 
@@ -272,7 +262,7 @@ def get_place(coords: Tuple[float, float]):
 def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, HierarchyStop]:
     try:
         locationcache = get_table_data("location_cache")
-        locationcache = {entry[0]: entry[1] for entry in locationcache}
+        locationcache = {entry.stop_id: entry.name for entry in locationcache}
     except Exception:
         locationcache = {}
     for stop in tqdm.tqdm(stop_hierarchy.values(), desc="Querying stop names", unit=" stops", ascii=True, dynamic_ncols=True):
@@ -285,11 +275,8 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
         else:
             child_ids = []
             child_names = [""]
-        if (
-            stop.stop_id not in locationcache.keys()
-            and stop.stop_id not in get_table_data("stg", filters={"stg_globid": stop.stop_id})
-            and not get_in_filtered_data("stg", "stg_globid", child_ids)
-        ):
+        stg_data = [entry.stg_globid for entry in get_in_filtered_data("stg", "stg_globid", [stop.stop_id] + child_ids, columns=["stg_globid"])]
+        if stop.stop_id not in locationcache.keys() and stop.stop_id not in stg_data:
             if stop.stop_name not in child_names and stop.stop_name not in child_names[0]:
                 if stop.stop_id not in locationcache:
                     found = False
@@ -319,15 +306,9 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
             else:
                 locationcache[stop.stop_id] = stop.stop_name
             stop.stop_name = locationcache[stop.stop_id]
-        elif get_table_data("stg", filters={"stg_globid": stop.stop_id}):
+        elif stop.stop_id in stg_data:
             stop.stop_name = get_table_data("stg", columns=["stg_name"], filters={"stg_globid": stop.stop_id})[0][0]
             locationcache[stop.stop_id] = stop.stop_name
-        elif get_in_filtered_data("stg", "stg_globid", child_ids):
-            for child in child_ids:
-                if get_table_data("stg", filters={"stg_globid": child}):
-                    stop.stop_name = get_table_data("stg", columns=["stg_name"], filters={"stg_globid": child})[0][0]
-                    locationcache[stop.stop_id] = stop.stop_name
-                    break
         if stop.children is not None:
             for child in stop.children:
                 locationcache[child.stop_id] = locationcache[stop.stop_id]

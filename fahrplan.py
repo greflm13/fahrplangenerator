@@ -450,7 +450,7 @@ def main():
     stops = db.get_table_data("stops")
     trips = db.get_table_data_iter("trips")
 
-    stop_hierarchy = utils.build_stop_hierarchy(stops)
+    stop_hierarchy = utils.build_stop_hierarchy()
     stop_hierarchy = utils.query_stop_names(stop_hierarchy)
     destinations = utils.build_dest_list(trips)
     stopss = {}
