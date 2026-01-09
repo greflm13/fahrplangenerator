@@ -5,9 +5,17 @@ import sqlite3
 from collections import namedtuple
 
 
+_namedtuple_cache = {}
+
+
 def namedtuple_factory(cursor, row):
-    fields = [column[0] for column in cursor.description]
-    cls = namedtuple("Row", fields)
+    """Create namedtuple rows with caching to avoid recreating class for each row."""
+    fields = tuple(column[0] for column in cursor.description)
+
+    if fields not in _namedtuple_cache:
+        _namedtuple_cache[fields] = namedtuple("Row", fields)
+
+    cls = _namedtuple_cache[fields]
     return cls._make(row)
 
 
@@ -17,15 +25,15 @@ cur = con.cursor()
 
 PRIMARY_KEYS = {
     "agency": "agency_id",
-    "calendar": "service_id",
     "calendar_dates": ("service_id", "date"),
+    "calendar": "service_id",
     "feed_info": "feed_publisher_name",
-    "hst": "stg_id",
     "levels": "level_id",
     "location_cache": "stop_id",
     "pathways": "pathway_id",
     "routes": "route_id",
     "shapes": ("shape_id", "shape_pt_sequence"),
+    "stg": "stg_id",
     "stop_times": ("trip_id", "stop_sequence"),
     "stops": "stop_id",
     "transfers": ("from_stop_id", "to_stop_id"),
@@ -34,8 +42,9 @@ PRIMARY_KEYS = {
 
 INDICES = {
     "calendar": ["service_id"],
-    "hst": ["stg_globid"],
     "routes": ["route_id"],
+    "shapes": ["shape_id"],
+    "stg": ["stg_globid"],
     "stop_times": ["stop_id", "trip_id"],
     "stops": ["stop_name"],
     "trips": ["route_id", "service_id"],
@@ -73,23 +82,23 @@ def load_gtfs(folder: str, append=True) -> None:
                 con.commit()
 
 
-def load_hst_json(file: str, append=True) -> None:
-    """Load HST JSON data."""
+def load_stg_json(file: str, append=True) -> None:
+    """Load STG JSON data."""
     data_path = os.path.join(file)
     with open(data_path, "r", encoding="utf-8-sig") as f:
         jsondata = [feature["properties"] for feature in json.load(f)["features"]]
         header = jsondata[0].keys()
-        primary_key = PRIMARY_KEYS.get("hst")
+        primary_key = PRIMARY_KEYS.get("stg")
         amount = ",".join(["?"] * len(header))
         if not append:
-            con.execute("DROP TABLE IF EXISTS hst")
+            con.execute("DROP TABLE IF EXISTS stg")
         if primary_key:
             pk_clause = ", ".join(primary_key) if isinstance(primary_key, tuple) else primary_key
-            con.execute(f"CREATE TABLE IF NOT EXISTS hst({','.join(header)}, PRIMARY KEY ({pk_clause}))")
+            con.execute(f"CREATE TABLE IF NOT EXISTS stg({','.join(header)}, PRIMARY KEY ({pk_clause}))")
         else:
-            con.execute(f"CREATE TABLE IF NOT EXISTS hst({','.join(header)})")
+            con.execute(f"CREATE TABLE IF NOT EXISTS stg({','.join(header)})")
         values = [tuple(record.values()) for record in jsondata]
-        con.executemany(f"INSERT OR REPLACE INTO hst VALUES ({amount})", values)
+        con.executemany(f"INSERT OR REPLACE INTO stg VALUES ({amount})", values)
         con.commit()
 
 
@@ -100,21 +109,55 @@ def update_location_cache(mappings: dict) -> None:
     con.commit()
 
 
-def get_table_data(table: str, columns: list | None = None, filters: dict | None = None):
+def get_table_data(table: str, columns: list | None = None, filters: dict | None = None, distinct: bool = False):
     """Get specific columns from a table with multiple filters."""
     cols = ", ".join(columns) if columns is not None else "*"
     conditions = " AND ".join([f"{col} = ?" for col in filters.keys()]) if filters is not None else ""
     values = tuple(filters.values()) if filters is not None else ()
+    dist = "DISTINCT " if distinct else ""
     if conditions == "":
-        cur.execute(f"SELECT {cols} FROM {table}")
+        cur.execute(f"SELECT {dist}{cols} FROM {table}")
     else:
-        cur.execute(f"SELECT {cols} FROM {table} WHERE {conditions}", values)
+        cur.execute(f"SELECT {dist}{cols} FROM {table} WHERE {conditions}", values)
     return cur.fetchall()
 
 
-def get_in_filtered_data(table: str, column: str, values: list, columns: list | None = None):
+def get_table_data_iter(table: str, columns: list | None = None, filters: dict | None = None, distinct: bool = False):
+    """Get specific columns from a table as a generator (memory efficient for large results)."""
+    cols = ", ".join(columns) if columns is not None else "*"
+    conditions = " AND ".join([f"{col} = ?" for col in filters.keys()]) if filters is not None else ""
+    values = tuple(filters.values()) if filters is not None else ()
+    dist = "DISTINCT " if distinct else ""
+    if conditions == "":
+        cur.execute(f"SELECT {dist}{cols} FROM {table}")
+    else:
+        cur.execute(f"SELECT {dist}{cols} FROM {table} WHERE {conditions}", values)
+
+    while True:
+        row = cur.fetchone()
+        if row is None:
+            break
+        yield row
+
+
+def get_in_filtered_data(table: str, column: str, values: list, columns: list | None = None, distinct: bool = False):
     """Get data from a table where a column's value is in a list."""
     cols = ", ".join(columns) if columns is not None else "*"
     placeholders = ",".join(["?"] * len(values))
-    cur.execute(f"SELECT {cols} FROM {table} WHERE {column} IN ({placeholders})", tuple(values))
+    dist = "DISTINCT " if distinct else ""
+    cur.execute(f"SELECT {dist}{cols} FROM {table} WHERE {column} IN ({placeholders})", tuple(values))
     return cur.fetchall()
+
+
+def get_in_filtered_data_iter(table: str, column: str, values: list, columns: list | None = None, distinct: bool = False):
+    """Get data from a table where a column's value is in a list as a generator (memory efficient)."""
+    cols = ", ".join(columns) if columns is not None else "*"
+    placeholders = ",".join(["?"] * len(values))
+    dist = "DISTINCT " if distinct else ""
+    cur.execute(f"SELECT {dist}{cols} FROM {table} WHERE {column} IN ({placeholders})", tuple(values))
+
+    while True:
+        row = cur.fetchone()
+        if row is None:
+            break
+        yield row

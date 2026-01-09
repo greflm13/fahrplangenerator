@@ -1,11 +1,9 @@
 import os
 import copy
-import json
 import random
 
-from typing import Dict, List, Set, Tuple
+from typing import Dict, Iterable, List, Set, Tuple
 from collections import namedtuple
-from dataclasses import replace
 
 import tqdm
 import pandas as pd
@@ -52,16 +50,16 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
 def build_shapedict(shapes: List) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = {}
-    for shapeline in tqdm.tqdm(shapes, desc="Building shapes", unit=" points", ascii=True, dynamic_ncols=True):
-        sid = shapeline.shape_id
-        if sid not in shapedict:
-            logger.debug("Processing shape ID: %s", sid)
-            shapedict[sid] = []
-        shapedict[sid].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
+    for shap in tqdm.tqdm(shapes, desc="Building shapes", unit=" points", ascii=True, dynamic_ncols=True):
+        sid = shap.shape_id
+        logger.debug("Processing shape ID: %s", sid)
+        shapedict[sid] = []
+        for shapeline in get_table_data("shapes", filters={"shape_id": sid}, columns=["shape_pt_lon", "shape_pt_lat", "shape_dist_traveled"]):
+            shapedict[sid].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
     return shapedict
 
 
-def build_list_index(list: List, index: str) -> Dict[str, Dict]:
+def build_list_index(list: Iterable, index: str) -> Dict[str, Dict]:
     """Build an index from a list of dictionaries based on a specified key."""
     data: Dict[str, Dict] = {}
     for item in list:
@@ -72,9 +70,9 @@ def build_list_index(list: List, index: str) -> Dict[str, Dict]:
     return data
 
 
-def build_stop_times_index(stop_times: List) -> Dict[str, List[Dict]]:
+def build_stop_times_index(stop_times: List) -> Dict[str, List]:
     """Index stop_times by trip_id for quick lookup."""
-    idx: Dict[str, List[Dict]] = {}
+    idx: Dict[str, List] = {}
     for st in stop_times:
         tid = getattr(st, "trip_id")
         if not tid:
@@ -86,8 +84,8 @@ def build_stop_times_index(stop_times: List) -> Dict[str, List[Dict]]:
 
 def prepare_linedraw_info(
     shapedict: Dict[str, List[Point]],
-    stop_times: Dict[str, List[Dict]],
-    trips: List[Dict],
+    stop_times: Dict[str, List],
+    trips: Iterable,
     stops: Dict[str, Dict[str, str]],
     line,
     direction,
@@ -98,15 +96,15 @@ def prepare_linedraw_info(
     stop_points: Set[Tuple] = set()
     end_stop_ids: Set[str] = set()
     for trip in trips:
-        if trip["route_id"] == line and "d" + trip["direction_id"] == direction:
-            if trip["shape_id"] != "":
-                shapes.add(Shape(trip["shape_id"], trip["trip_id"]))
+        if trip.route_id == line and "d" + trip.direction_id == direction:
+            if trip.shape_id != "":
+                shapes.add(Shape(trip.shape_id, trip.trip_id))
     linedrawinfo = {"shapes": [], "points": [], "endstops": []}
     for shap in shapes:
         times = stop_times[shap.tripid]
         for timeidx, time in enumerate(times):
-            if time["stop_id"] in ourstop:
-                shape_dist_traveled = time["shape_dist_traveled"]
+            if time.stop_id in ourstop:
+                shape_dist_traveled = time.shape_dist_traveled
                 geometry = shapedict[shap.shapeid]
                 for geoidx, point in enumerate(geometry):
                     if point.z == float(shape_dist_traveled):
@@ -115,22 +113,22 @@ def prepare_linedraw_info(
                         stop_points.update(
                             [
                                 (
-                                    Point(float(stops[stop["stop_id"]]["stop_lon"]), float(stops[stop["stop_id"]]["stop_lat"])),
-                                    Stop(stop["stop_id"], get_stop_name(stop["stop_id"], stops)),
+                                    Point(float(stops[stop.stop_id]["stop_lon"]), float(stops[stop.stop_id]["stop_lat"])),
+                                    Stop(stop.stop_id, get_stop_name(stop.stop_id)),
                                 )
                                 for stop in tim
                             ]
                         )
                         if len(geo) != 1:
                             linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
-                        endstop = stops[times[-1]["stop_id"]]
-                        end_stop_ids.add(get_stop_name(endstop["stop_id"], stops))
+                        endstop = stops[times[-1].stop_id]
+                        end_stop_ids.add(get_stop_name(endstop["stop_id"]))
     linedrawinfo["points"] = list(stop_points)
     linedrawinfo["endstops"] = list(end_stop_ids)
     return linedrawinfo
 
 
-def create_merged_pdf(pages: list[str], path: str):
+def create_merged_pdf(pages: List[str], path: str):
     output = PdfWriter()
 
     for page in pages:
@@ -140,7 +138,7 @@ def create_merged_pdf(pages: list[str], path: str):
     output.write(path)
 
 
-def merge_dicts(a: dict[str, dict[str, dict[str, list[dict[str, str]]]]], b: dict[str, dict[str, dict[str, list[dict[str, str]]]]]):
+def merge_dicts(a: Dict[str, Dict[str, Dict[str, List[Dict[str, str]]]]], b: Dict[str, Dict[str, Dict[str, List[Dict[str, str]]]]]):
     c = copy.deepcopy(a)
     for k, v in b.items():
         if k in a:
@@ -158,7 +156,7 @@ def merge_dicts(a: dict[str, dict[str, dict[str, list[dict[str, str]]]]], b: dic
     return c
 
 
-def dict_set(lst: list[dict[str, str]]):
+def dict_set(lst: List[Dict[str, str]]):
     seen = []
     setlike = []
     for d in lst:
@@ -169,7 +167,7 @@ def dict_set(lst: list[dict[str, str]]):
     return setlike
 
 
-def most_frequent(lst: list[str]):
+def most_frequent(lst: List[str]):
     counts = {i: lst.count(i) for i in set(lst)}
     max_count = max(counts.values(), default=0)
     if max_count == 1:
@@ -185,7 +183,7 @@ def remove_suffix(text: str) -> str:
     return " ".join(sp)
 
 
-def merge(lst: list[str]):
+def merge(lst: List[str]):
     rl = []
     for i in lst:
         rl.append(remove_suffix(i))
@@ -244,7 +242,7 @@ def find_correct_stop_name(stops):
             stopss[stop["stop_name"]] = stop
 
 
-def build_stop_hierarchy(stops: List) -> Dict[str, HierarchyStop]:
+def build_stop_hierarchy(stops: Iterable) -> Dict[str, HierarchyStop]:
     hierarchy: Dict[str, HierarchyStop] = {}
     for stop in stops:
         if stop.parent_station == "":
@@ -289,8 +287,8 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
             child_names = [""]
         if (
             stop.stop_id not in locationcache.keys()
-            and stop.stop_id not in get_table_data("hst", filters={"stg_globid": stop.stop_id})
-            and not get_in_filtered_data("hst", "stg_globid", child_ids)
+            and stop.stop_id not in get_table_data("stg", filters={"stg_globid": stop.stop_id})
+            and not get_in_filtered_data("stg", "stg_globid", child_ids)
         ):
             if stop.stop_name not in child_names and stop.stop_name not in child_names[0]:
                 if stop.stop_id not in locationcache:
@@ -321,13 +319,13 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
             else:
                 locationcache[stop.stop_id] = stop.stop_name
             stop.stop_name = locationcache[stop.stop_id]
-        elif get_table_data("hst", filters={"stg_globid": stop.stop_id}):
-            stop.stop_name = get_table_data("hst", columns=["stg_name"], filters={"stg_globid": stop.stop_id})[0][0]
+        elif get_table_data("stg", filters={"stg_globid": stop.stop_id}):
+            stop.stop_name = get_table_data("stg", columns=["stg_name"], filters={"stg_globid": stop.stop_id})[0][0]
             locationcache[stop.stop_id] = stop.stop_name
-        elif get_in_filtered_data("hst", "stg_globid", child_ids):
+        elif get_in_filtered_data("stg", "stg_globid", child_ids):
             for child in child_ids:
-                if get_table_data("hst", filters={"stg_globid": child}):
-                    stop.stop_name = get_table_data("hst", columns=["stg_name"], filters={"stg_globid": child})[0][0]
+                if get_table_data("stg", filters={"stg_globid": child}):
+                    stop.stop_name = get_table_data("stg", columns=["stg_name"], filters={"stg_globid": child})[0][0]
                     locationcache[stop.stop_id] = stop.stop_name
                     break
         if stop.children is not None:
@@ -339,14 +337,8 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
     return stop_hierarchy
 
 
-def get_stop_name(stop_id: str, stops) -> str:
-    loccache = os.path.join(CACHEDIR, "location_cache")
-    with open(loccache, "r", encoding="utf-8") as f:
-        locationcache = json.loads(f.read())
-    if stops[stop_id]["parent_station"] != "":
-        return locationcache[stops[stop_id]["parent_station"]]
-    else:
-        return locationcache[stop_id]
+def get_stop_name(stop_id: str) -> str:
+    return get_table_data("location_cache", columns=["name"], filters={"stop_id": stop_id})[0][0]
 
 
 def load_hst_json(json: Dict):
@@ -356,7 +348,7 @@ def load_hst_json(json: Dict):
     return id_mapping
 
 
-def build_dest_list(lst: List) -> Dict[str, Dict[str, str]]:
+def build_dest_list(lst: Iterable) -> Dict[str, Dict[str, str]]:
     destinations = {}
     routes = {}
     for trip in lst:

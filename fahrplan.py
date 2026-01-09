@@ -449,26 +449,24 @@ def main():
     else:
         append = True
 
-    for folder in tqdm.tqdm(args.input, desc="Loading data", unit=" folders", ascii=True, dynamic_ncols=True):
-        if os.path.isdir(folder):
-            db.load_gtfs(folder, append=append)
-            append = True
-        else:
-            logger.error("Input folder %s does not exist", folder)
+    if args.mapping_json:
+        db.load_stg_json(args.mapping_json, append=append)
+
+    if len(args.input) > 0:
+        for folder in tqdm.tqdm(args.input, desc="Loading data", unit=" folders", ascii=True, dynamic_ncols=True):
+            if os.path.isdir(folder):
+                db.load_gtfs(folder, append=append)
+                append = True
+            else:
+                logger.error("Input folder %s does not exist", folder)
 
     if args.map:
-        print("loading shapes")
-        shapes = db.get_table_data("shapes")
-        shapedict = utils.build_shapedict(shapes)
-        del shapes
+        shapedict = utils.build_shapedict(db.get_table_data("shapes", columns=["shape_id"], distinct=True))
     else:
         shapedict = None
 
-    if args.mapping_json:
-        db.load_hst_json(args.mapping_json, append=not args.reset_db)
-
     stops = db.get_table_data("stops")
-    trips = db.get_table_data("trips")
+    trips = db.get_table_data_iter("trips")
 
     stop_hierarchy = utils.build_stop_hierarchy(stops)
     stop_hierarchy = utils.query_stop_names(stop_hierarchy)
