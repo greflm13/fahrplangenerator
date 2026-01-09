@@ -267,36 +267,19 @@ def compute(ourstop: HierarchyStop, stops: dict[str, dict], args, destinations: 
     sun: list[dict[str, str]] = []
 
     for trip in tqdm.tqdm(ourtrips, desc="Sorting trips", unit=" trips", ascii=True, dynamic_ncols=True):
+        data = {
+            "dest": trip.trip_headsign,
+            "time": selected_stop_times[trip.trip_id]["departure_time"][:-3],
+            "line": trip.route_id,
+            "dire": selected_trips[trip.trip_id]["direction_id"],
+            "stop": selected_stops[selected_stop_times[trip.trip_id]["stop_id"]]["stop_name"],
+        }
         if calendar[trip.service_id]["monday"] == "1":
-            mon.append(
-                {
-                    "dest": trip.trip_headsign,
-                    "time": selected_stop_times[trip.trip_id]["arrival_time"][:-3],
-                    "line": trip.route_id,
-                    "dire": selected_trips[trip.trip_id]["direction_id"],
-                    "stop": selected_stops[selected_stop_times[trip.trip_id]["stop_id"]]["stop_name"],
-                }
-            )
+            mon.append(data)
         if calendar[trip.service_id]["saturday"] == "1":
-            sat.append(
-                {
-                    "dest": trip.trip_headsign,
-                    "time": selected_stop_times[trip.trip_id]["arrival_time"][:-3],
-                    "line": trip.route_id,
-                    "dire": selected_trips[trip.trip_id]["direction_id"],
-                    "stop": selected_stops[selected_stop_times[trip.trip_id]["stop_id"]]["stop_name"],
-                }
-            )
+            sat.append(data)
         if calendar[trip.service_id]["sunday"] == "1":
-            sun.append(
-                {
-                    "dest": trip.trip_headsign,
-                    "time": selected_stop_times[trip.trip_id]["arrival_time"][:-3],
-                    "line": trip.route_id,
-                    "dire": selected_trips[trip.trip_id]["direction_id"],
-                    "stop": selected_stops[selected_stop_times[trip.trip_id]["stop_id"]]["stop_name"],
-                }
-            )
+            sun.append(data)
 
     mon = sorted(utils.dict_set(mon), key=lambda x: x["time"])
     sat = sorted(utils.dict_set(sat), key=lambda x: x["time"])

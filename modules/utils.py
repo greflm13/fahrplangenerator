@@ -15,7 +15,7 @@ from shapely.geometry import shape, Point
 
 from modules.logger import logger
 from modules.datatypes import HierarchyStop
-from modules.db import update_location_cache, get_table_data, get_in_filtered_data
+from modules.db import update_location_cache, get_table_data, get_in_filtered_data, get_table_data_iter
 
 if __package__ is None:
     PACKAGE = ""
@@ -50,11 +50,11 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
 def build_shapedict(shapes: List) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = {}
-    for shap in tqdm.tqdm(shapes, desc="Building shapes", unit=" points", ascii=True, dynamic_ncols=True):
+    for shap in tqdm.tqdm(shapes, desc="Building shapes", unit=" shapes", ascii=True, dynamic_ncols=True):
         sid = shap.shape_id
         logger.debug("Processing shape ID: %s", sid)
         shapedict[sid] = []
-        for shapeline in get_table_data("shapes", filters={"shape_id": sid}, columns=["shape_pt_lon", "shape_pt_lat", "shape_dist_traveled"]):
+        for shapeline in get_table_data_iter("shapes", filters={"shape_id": sid}, columns=["shape_pt_lon", "shape_pt_lat", "shape_dist_traveled"]):
             shapedict[sid].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
     return shapedict
 
