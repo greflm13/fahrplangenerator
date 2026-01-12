@@ -12,6 +12,9 @@ def namedtuple_factory(cursor, row):
     """Create namedtuple rows with caching to avoid recreating class for each row."""
     fields = tuple(column[0] for column in cursor.description)
 
+    if len(fields) == 1:
+        return row[0]
+
     if fields not in _namedtuple_cache:
         _namedtuple_cache[fields] = namedtuple("Row", fields)
 
@@ -46,12 +49,12 @@ INDICES = {
     "shapes": ["shape_id"],
     "stg": ["stg_globid"],
     "stop_times": ["stop_id", "trip_id"],
-    "stops": ["stop_name"],
+    "stops": ["stop_id", "stop_name"],
     "trips": ["route_id", "service_id"],
 }
 
 
-def load_gtfs(folder: str, append=True) -> None:
+def load_gtfs(folder: str, agency_id: int, append=True) -> None:
     """Load GTFS data."""
     if os.path.isdir(folder):
         files = os.listdir(folder)
@@ -60,9 +63,14 @@ def load_gtfs(folder: str, append=True) -> None:
             if ext == ".txt":
                 data_path = os.path.join(folder, file)
                 with open(data_path, "r", encoding="utf-8-sig") as f:
-                    csvdata = [tuple(row) for row in csv.reader(f, skipinitialspace=True)]
+                    csvdata = list(csv.reader(f, skipinitialspace=True))
                 header = csvdata[0]
+                id_col_indices = {i for i, col in enumerate(header) if col.endswith("_id") or col == "parent_station"}
                 data = csvdata[1:]
+                for row in data:
+                    for i in id_col_indices:
+                        if row[i] != "":
+                            row[i] = f"{agency_id}_{row[i]}"
                 primary_key = PRIMARY_KEYS.get(typ)
                 amount = ",".join(["?"] * len(header))
                 if not append:
@@ -72,7 +80,7 @@ def load_gtfs(folder: str, append=True) -> None:
                     con.execute(f"CREATE TABLE IF NOT EXISTS {typ}({','.join(header)}, PRIMARY KEY ({pk_clause}))")
                 else:
                     con.execute(f"CREATE TABLE IF NOT EXISTS {typ}({','.join(header)})")
-                table_cols = [col[1] for col in con.execute(f"PRAGMA table_info({typ})").fetchall()]
+                table_cols = [col.name for col in con.execute(f"PRAGMA table_info({typ})").fetchall()]
                 for col in header:
                     if col not in table_cols:
                         con.execute(f"ALTER TABLE {typ} ADD COLUMN {col}")
@@ -161,3 +169,14 @@ def get_in_filtered_data_iter(table: str, column: str, values: list, columns: li
         if row is None:
             break
         yield row
+
+
+def get_most_frequent_values(table: str, column: str, filters: dict | None = None, limit: int = 1):
+    """Get the most frequent values in a specified column of a table."""
+    if filters is not None:
+        conditions = " AND ".join([f"{col} = ?" for col in filters.keys()])
+        values = tuple(filters.values())
+        cur.execute(f"SELECT {column}, COUNT(*) as count FROM {table} WHERE {conditions} GROUP BY {column} ORDER BY count DESC LIMIT ?", (*values, limit))
+    else:
+        cur.execute(f"SELECT {column}, COUNT(*) as count FROM {table} GROUP BY {column} ORDER BY count DESC LIMIT ?", (limit,))
+    return cur.fetchall()

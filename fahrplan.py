@@ -8,8 +8,8 @@ import PIL.Image
 import tqdm
 import requests
 import questionary
-from rich_argparse import RichHelpFormatter
 
+from rich_argparse import RichHelpFormatter
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
@@ -21,7 +21,7 @@ import modules.db as db
 
 from modules.map import draw_map
 from modules.logger import logger
-from modules.datatypes import HierarchyStop
+from modules.datatypes import HierarchyStop, Routedata
 
 PIL.Image.MAX_IMAGE_PIXELS = 9331200000
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -44,7 +44,7 @@ custom_style = questionary.Style(
 )
 
 
-def addtimes(pdf: Canvas, daytimes: dict[str, list[dict[str, str]]], day: str, posy: float, accent: colors.Color, dest: str, addstops: dict[str, int] = {"num": 1}):
+def addtimes(pdf: Canvas, daytimes: dict[str, list[Routedata]], day: str, posy: float, accent: colors.Color, dest: str, addstops: dict[str, int] = {"num": 1}):
     logger.info(f"Add {day}")
 
     pdg = pdf
@@ -73,23 +73,23 @@ def addtimes(pdf: Canvas, daytimes: dict[str, list[dict[str, str]]], day: str, p
         space = 0
         loctimes = 0
         for time in v:
-            sp = time["stop"].split()
+            sp = time.stop.split()
             if len(sp[-1]) < 2:
                 sp.pop()
             stopn = " ".join(sp)
-            if time["dest"] != stopn:
+            if time.dest != stopn:
                 loctimes += 1
                 # Minutes Text
                 pdf.setFont("hour", 17)
                 pdf.setFillColor(colors.black)
-                pdf.drawCentredString(x=posx, y=posy - 20 + space, text=time["time"][3:])
-                if time["dest"] != dest:
-                    if not addstops.get(time["dest"], False):
-                        addstops[time["dest"]] = addstops["num"]
+                pdf.drawCentredString(x=posx, y=posy - 20 + space, text=time.time[3:])
+                if time.dest != dest:
+                    if not addstops.get(time.dest, False):
+                        addstops[time.dest] = addstops["num"]
                         addstops["num"] += 1
                     pdf.setFont("add", 8)
                     pdf.setFontSize(8)
-                    pdf.drawCentredString(x=posx + 12, y=posy - 22 + space, text=ALPHABET[addstops[time["dest"]] - 1])
+                    pdf.drawCentredString(x=posx + 12, y=posy - 22 + space, text=ALPHABET[addstops[time.dest] - 1])
                     pdf.setFont("hour", 17)
                 space -= 25
         times = max(times, loctimes)
@@ -115,9 +115,9 @@ def create_page(
     dest: str,
     stop: HierarchyStop,
     path: str,
-    montimes: dict[str, list[dict[str, str]]],
-    sattimes: dict[str, list[dict[str, str]]],
-    suntimes: dict[str, list[dict[str, str]]],
+    montimes: dict[str, list[Routedata]],
+    sattimes: dict[str, list[Routedata]],
+    suntimes: dict[str, list[Routedata]],
     color: str,
     logo: tempfile._TemporaryFileWrapper | str | None = "</srgn>",
 ):
@@ -161,11 +161,11 @@ def create_page(
         loctime = 0
         for v in montimes.values():
             for time in v:
-                sp = time["stop"].split()
+                sp = time.stop.split()
                 if len(sp[-1]) < 2:
                     sp.pop()
                 stopn = " ".join(sp)
-                if time["dest"] != stopn:
+                if time.dest != stopn:
                     loctime += 1
         if loctime > 0:
             pdf, posy, addstops, loctimes = addtimes(pdf, montimes, "Montag-Freitag", posy, accent, dest, addstops)
@@ -175,11 +175,11 @@ def create_page(
         loctime = 0
         for v in sattimes.values():
             for time in v:
-                sp = time["stop"].split()
+                sp = time.stop.split()
                 if len(sp[-1]) < 2:
                     sp.pop()
                 stopn = " ".join(sp)
-                if time["dest"] != stopn:
+                if time.dest != stopn:
                     loctime += 1
         if loctime > 0:
             pdf, posy, addstops, loctimes = addtimes(pdf, sattimes, "Samstag", posy, accent, dest, addstops)
@@ -189,11 +189,11 @@ def create_page(
         loctime = 0
         for v in suntimes.values():
             for time in v:
-                sp = time["stop"].split()
+                sp = time.stop.split()
                 if len(sp[-1]) < 2:
                     sp.pop()
                 stopn = " ".join(sp)
-                if time["dest"] != stopn:
+                if time.dest != stopn:
                     loctime += 1
         if loctime > 0:
             pdf, posy, addstops, loctimes = addtimes(pdf, suntimes, "Sonntag", posy, accent, dest, addstops)
@@ -239,13 +239,13 @@ def compute(ourstop: HierarchyStop, stops: dict[str, dict], args, destinations: 
     stopids = [stop["stop_id"] for stop in ourstops]
     ourtimes = db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
     logger.info("computing our trips")
-    times = [time.trip_id for time in ourtimes]
+    times = db.get_in_filtered_data("stop_times", column="stop_id", values=stopids, columns=["trip_id"])
     ourtrips = db.get_in_filtered_data("trips", column="trip_id", values=times)
     logger.info("computing our services")
-    services = [trip.service_id for trip in ourtrips]
+    services = db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["service_id"])
     ourservs = db.get_in_filtered_data("calendar", column="service_id", values=services)
     logger.info("computing our routes")
-    routeids = [trip.route_id for trip in ourtrips]
+    routeids = db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["route_id"])
     ourroute = db.get_in_filtered_data("routes", column="route_id", values=routeids)
 
     logger.info("playing variable shuffle")
@@ -254,70 +254,65 @@ def compute(ourstop: HierarchyStop, stops: dict[str, dict], args, destinations: 
         print(f'Stop "{ourstop}" not found!')
         return
 
-    selected_stops = utils.build_list_index(ourstops, "stop_id")
     selected_stop_times = utils.build_list_index(ourtimes, "trip_id")
     stop_times = utils.build_stop_times_index(db.get_table_data("stop_times"))
-    selected_trips = utils.build_list_index(ourtrips, "trip_id")
     calendar = utils.build_list_index(ourservs, "service_id")
     selected_routes = utils.build_list_index(ourroute, "route_id")
 
-    mon: list[dict[str, str]] = []
-    sat: list[dict[str, str]] = []
-    sun: list[dict[str, str]] = []
+    monset: set[Routedata] = set()
+    satset: set[Routedata] = set()
+    sunset: set[Routedata] = set()
 
     for trip in tqdm.tqdm(ourtrips, desc="Sorting trips", unit=" trips", ascii=True, dynamic_ncols=True):
-        data = {
-            "dest": trip.trip_headsign,
-            "time": selected_stop_times[trip.trip_id]["departure_time"][:-3],
-            "line": trip.route_id,
-            "dire": selected_trips[trip.trip_id]["direction_id"],
-            "stop": selected_stops[selected_stop_times[trip.trip_id]["stop_id"]]["stop_name"],
-        }
+        data = Routedata(
+            dest=trip.trip_headsign,
+            time=selected_stop_times[trip.trip_id]["departure_time"][:-3],
+            line=trip.route_id,
+            dire=f"d{trip.direction_id}",
+            stop=ourstop.stop_name,
+        )
         if calendar[trip.service_id]["monday"] == "1":
-            mon.append(data)
+            monset.add(data)
         if calendar[trip.service_id]["saturday"] == "1":
-            sat.append(data)
+            satset.add(data)
         if calendar[trip.service_id]["sunday"] == "1":
-            sun.append(data)
+            sunset.add(data)
 
-    mon = sorted(utils.dict_set(mon), key=lambda x: x["time"])
-    sat = sorted(utils.dict_set(sat), key=lambda x: x["time"])
-    sun = sorted(utils.dict_set(sun), key=lambda x: x["time"])
+    mon = sorted(monset, key=lambda x: x.time)
+    sat = sorted(satset, key=lambda x: x.time)
+    sun = sorted(sunset, key=lambda x: x.time)
 
-    mondict: dict[str, dict[str, dict[str, list[dict[str, str]]]]] = {}
-    satdict: dict[str, dict[str, dict[str, list[dict[str, str]]]]] = {}
-    sundict: dict[str, dict[str, dict[str, list[dict[str, str]]]]] = {}
+    mondict: dict[str, dict[str, dict[str, list[Routedata]]]] = {}
+    satdict: dict[str, dict[str, dict[str, list[Routedata]]]] = {}
+    sundict: dict[str, dict[str, dict[str, list[Routedata]]]] = {}
 
     for trip in tqdm.tqdm(mon, desc="Indexing Monday-Friday trips", unit=" trips", ascii=True, dynamic_ncols=True):
-        if not mondict.get(trip["line"], False):
-            mondict[trip["line"]] = {}
-        if not mondict.get(trip["line"], {}).get(f"d{trip['dire']}", False):
-            mondict[trip["line"]][f"d{trip['dire']}"] = {}
+        if not mondict.get(trip.line, False):
+            mondict[trip.line] = {}
+        if not mondict.get(trip.line, {}).get(trip.dire, False):
+            mondict[trip.line][trip.dire] = {}
         for i in range(0, 24):
-            if not mondict[trip["line"]][f"d{trip['dire']}"].get(f"t{i:02}", False):
-                mondict[trip["line"]][f"d{trip['dire']}"][f"t{i:02}"] = []
-        mondict[trip["line"]][f"d{trip['dire']}"].setdefault(f"t{trip['time'][:2]}", []).append(trip)
-
+            if not mondict[trip.line][trip.dire].get(f"t{i:02}", False):
+                mondict[trip.line][trip.dire][f"t{i:02}"] = []
+        mondict[trip.line][trip.dire].setdefault(f"t{trip.time[:2]}", []).append(trip)
     for trip in tqdm.tqdm(sat, desc="Indexing Saturday trips", unit=" trips", ascii=True, dynamic_ncols=True):
-        if not satdict.get(trip["line"], False):
-            satdict[trip["line"]] = {}
-        if not satdict.get(trip["line"], {}).get(f"d{trip['dire']}", False):
-            satdict[trip["line"]][f"d{trip['dire']}"] = {}
+        if not satdict.get(trip.line, False):
+            satdict[trip.line] = {}
+        if not satdict.get(trip.line, {}).get(trip.dire, False):
+            satdict[trip.line][trip.dire] = {}
         for i in range(0, 24):
-            if not satdict[trip["line"]][f"d{trip['dire']}"].get(f"t{i:02}", False):
-                satdict[trip["line"]][f"d{trip['dire']}"][f"t{i:02}"] = []
-        satdict[trip["line"]][f"d{trip['dire']}"].setdefault(f"t{trip['time'][:2]}", []).append(trip)
-
+            if not satdict[trip.line][trip.dire].get(f"t{i:02}", False):
+                satdict[trip.line][trip.dire][f"t{i:02}"] = []
+        satdict[trip.line][trip.dire].setdefault(f"t{trip.time[:2]}", []).append(trip)
     for trip in tqdm.tqdm(sun, desc="Indexing Sunday trips", unit=" trips", ascii=True, dynamic_ncols=True):
-        if not sundict.get(trip["line"], False):
-            sundict[trip["line"]] = {}
-        if not sundict.get(trip["line"], {}).get(f"d{trip['dire']}", False):
-            sundict[trip["line"]][f"d{trip['dire']}"] = {}
+        if not sundict.get(trip.line, False):
+            sundict[trip.line] = {}
+        if not sundict.get(trip.line, {}).get(trip.dire, False):
+            sundict[trip.line][trip.dire] = {}
         for i in range(0, 24):
-            if not sundict[trip["line"]][f"d{trip['dire']}"].get(f"t{i:02}", False):
-                sundict[trip["line"]][f"d{trip['dire']}"][f"t{i:02}"] = []
-        sundict[trip["line"]][f"d{trip['dire']}"].setdefault(f"t{trip['time'][:2]}", []).append(trip)
-
+            if not sundict[trip.line][trip.dire].get(f"t{i:02}", False):
+                sundict[trip.line][trip.dire][f"t{i:02}"] = []
+        sundict[trip.line][trip.dire].setdefault(f"t{trip.time[:2]}", []).append(trip)
     pages: dict[str, dict[str, str | None]] = {}
 
     lines = utils.merge_dicts(utils.merge_dicts(mondict, satdict), sundict)
@@ -435,9 +430,9 @@ def main():
         db.load_stg_json(args.mapping_json, append=append)
 
     if len(args.input) > 0:
-        for folder in tqdm.tqdm(args.input, desc="Loading data", unit=" folders", ascii=True, dynamic_ncols=True):
+        for aid, folder in tqdm.tqdm(enumerate(args.input), desc="Loading data", unit="folder", ascii=True):
             if os.path.isdir(folder):
-                db.load_gtfs(folder, append=append)
+                db.load_gtfs(folder, aid, append=append)
                 append = True
             else:
                 logger.error("Input folder %s does not exist", folder)
@@ -448,11 +443,10 @@ def main():
         shapedict = None
 
     stops = db.get_table_data("stops")
-    trips = db.get_table_data_iter("trips")
 
     stop_hierarchy = utils.build_stop_hierarchy()
     stop_hierarchy = utils.query_stop_names(stop_hierarchy)
-    destinations = utils.build_dest_list(trips)
+    destinations = utils.build_dest_list()
     stopss = {}
     for stop in stop_hierarchy.values():
         if stop.stop_name not in stopss:

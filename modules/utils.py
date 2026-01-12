@@ -3,7 +3,6 @@ import copy
 import random
 
 from typing import Dict, Iterable, List, Set, Tuple
-from collections import namedtuple
 
 import tqdm
 import pandas as pd
@@ -14,8 +13,8 @@ from pypdf import PdfReader, PdfWriter
 from shapely.geometry import shape, Point
 
 from modules.logger import logger
-from modules.datatypes import HierarchyStop
-from modules.db import update_location_cache, get_table_data, get_in_filtered_data, get_table_data_iter
+from modules.datatypes import HierarchyStop, Shape, Stop, Routedata
+from modules.db import update_location_cache, get_table_data, get_in_filtered_data, get_table_data_iter, get_most_frequent_values
 
 if __package__ is None:
     PACKAGE = ""
@@ -25,9 +24,6 @@ SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
 CACHEDIR = os.path.join(SCRIPTDIR, "__pycache__")
 
 geolocator = Photon(user_agent="fahrplan.py")
-
-Shape = namedtuple("Shape", ["shapeid", "tripid"])
-Stop = namedtuple("Stop", ["id", "name"])
 
 
 def load_gtfs(folder: str, type: str) -> List[Dict]:
@@ -63,10 +59,7 @@ def build_list_index(list: Iterable, index: str) -> Dict[str, Dict]:
     """Build an index from a list of dictionaries based on a specified key."""
     data: Dict[str, Dict] = {}
     for item in list:
-        if isinstance(item, dict):
-            data[item[index]] = item
-        else:
-            data[getattr(item, index)] = item._asdict()
+        data[getattr(item, index)] = item._asdict()
     return data
 
 
@@ -138,7 +131,7 @@ def create_merged_pdf(pages: List[str], path: str):
     output.write(path)
 
 
-def merge_dicts(a: Dict[str, Dict[str, Dict[str, List[Dict[str, str]]]]], b: Dict[str, Dict[str, Dict[str, List[Dict[str, str]]]]]):
+def merge_dicts(a: Dict[str, Dict[str, Dict[str, List[Routedata]]]], b: Dict[str, Dict[str, Dict[str, List[Routedata]]]]):
     c = copy.deepcopy(a)
     for k, v in b.items():
         if k in a:
@@ -156,11 +149,11 @@ def merge_dicts(a: Dict[str, Dict[str, Dict[str, List[Dict[str, str]]]]], b: Dic
     return c
 
 
-def dict_set(lst: List[Dict[str, str]]):
+def dict_set(lst: List[Routedata]) -> List[Routedata]:
     seen = []
     setlike = []
     for d in lst:
-        signature = {"time": d["time"], "line": d["line"], "dire": d["dire"]}
+        signature = {"time": d.time, "line": d.line, "dire": d.dire}
         if signature not in seen:
             seen.append(signature)
             setlike.append(d)
@@ -275,16 +268,19 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
         else:
             child_ids = []
             child_names = [""]
-        stg_data = [entry.stg_globid for entry in get_in_filtered_data("stg", "stg_globid", [stop.stop_id] + child_ids, columns=["stg_globid"])]
-        if stop.stop_id not in locationcache.keys() and stop.stop_id not in stg_data:
+        database_query = [sid.split("_", 1)[1] for sid in [stop.stop_id] + child_ids]
+        stg_data = get_in_filtered_data("stg", "stg_globid", database_query, columns=["stg_globid"])
+        if len(stg_data) == 0:
             if stop.stop_name not in child_names and stop.stop_name not in child_names[0]:
                 if stop.stop_id not in locationcache:
+                    logger.info("Stop not found in cache or STG: %s", stop.stop_id)
                     found = False
                     if stop.children is not None:
                         attempts = [(stop.stop_lat, stop.stop_lon)] + [(child.stop_lat, child.stop_lon) for child in stop.children]
                     else:
                         attempts = [(stop.stop_lat, stop.stop_lon)]
                     for attempt in attempts:
+                        logger.info("Attempting to lookup coordinates: %s", attempt)
                         location_lookup = get_place(attempt)
                         if (
                             "name" in location_lookup.keys()
@@ -293,6 +289,7 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
                         ):
                             stop.stop_name = location_lookup["name"]
                             locationcache[stop.stop_id] = location_lookup["name"]
+                            logger.info("Found stop name '%s' for stop ID %s", stop.stop_name, stop.stop_id)
                             found = True
                             break
                     if not found:
@@ -306,8 +303,8 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
             else:
                 locationcache[stop.stop_id] = stop.stop_name
             stop.stop_name = locationcache[stop.stop_id]
-        elif stop.stop_id in stg_data:
-            stop.stop_name = get_table_data("stg", columns=["stg_name"], filters={"stg_globid": stop.stop_id})[0][0]
+        else:
+            stop.stop_name = get_in_filtered_data("stg", column="stg_globid", values=stg_data, columns=["stg_name"], distinct=True)[0]
             locationcache[stop.stop_id] = stop.stop_name
         if stop.children is not None:
             for child in stop.children:
@@ -329,19 +326,12 @@ def load_hst_json(json: Dict):
     return id_mapping
 
 
-def build_dest_list(lst: Iterable) -> Dict[str, Dict[str, str]]:
+def build_dest_list() -> Dict[str, Dict[str, str]]:
     destinations = {}
-    routes = {}
-    for trip in lst:
-        if trip.route_id not in routes:
-            routes[trip.route_id] = {f"d{trip.direction_id}": [trip.trip_headsign]}
-        elif f"d{trip.direction_id}" not in routes[trip.route_id]:
-            routes[trip.route_id][f"d{trip.direction_id}"] = [trip.trip_headsign]
-        else:
-            routes[trip.route_id][f"d{trip.direction_id}"].append(trip.trip_headsign)
-    for route, directions in routes.items():
-        for direction, values in directions.items():
-            if route not in destinations:
-                destinations[route] = {}
-            destinations[route][direction] = max(set(values), key=values.count)
+    for trip in get_table_data("trips", columns=["route_id", "direction_id"], distinct=True):
+        if trip.route_id not in destinations:
+            destinations[trip.route_id] = {}
+        destinations[trip.route_id][f"d{trip.direction_id}"] = get_most_frequent_values(
+            "trips", "trip_headsign", filters={"route_id": trip.route_id, "direction_id": trip.direction_id}
+        )[0].trip_headsign
     return destinations
