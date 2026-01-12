@@ -430,7 +430,7 @@ def main():
         db.load_stg_json(args.mapping_json, append=append)
 
     if len(args.input) > 0:
-        for aid, folder in tqdm.tqdm(enumerate(args.input), desc="Loading data", unit="folder", ascii=True):
+        for aid, folder in tqdm.tqdm(enumerate(args.input), total=len(args.input), desc="Loading data", unit="folder", ascii=True, dynamic_ncols=True):
             if os.path.isdir(folder):
                 db.load_gtfs(folder, aid, append=append)
                 append = True
