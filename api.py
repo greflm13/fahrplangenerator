@@ -15,7 +15,6 @@ from modules.logger import logger
 from fahrplan import compute
 
 
-# Globals for preloaded GTFS data (populated at startup)
 SHAPEDICT = None
 STOP_HIERARCHY = None
 STOPSS = None
@@ -52,12 +51,9 @@ async def lifespan(app: FastAPI):
         logger.info("Loaded GTFS data at startup")
     except Exception as e:
         logger.error(f"Error loading GTFS data at startup: {str(e)}")
-        # Leave globals as None so requests will return a clear HTTP error if data is not available
     yield
-    # Cleanup code can be added here if needed
 
 
-# Initialize FastAPI app
 app = FastAPI(title="Fahrplan Generator API", description="Generate transit timetables", version="1.0.0", lifespan=lifespan)
 
 
@@ -98,7 +94,6 @@ async def generate_timetable(request: FahrplanRequest):
     try:
         args = Args(generate_map=request.generate_map, color=request.color, map_provider=request.map_provider, map_dpi=request.map_dpi)
 
-        # Use data preloaded at startup
         global SHAPEDICT, STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS
         if STOPS is None or STOP_HIERARCHY is None or DESTINATIONS is None or STOPSS is None or SHAPEDICT is None:
             raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
@@ -123,7 +118,6 @@ async def generate_timetable(request: FahrplanRequest):
 
         logger.info(f"Generating timetable for {request.station_name}")
 
-        # Set output filename to {station_name}.pdf (sanitized to be filesystem-safe)
         safe_station = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", request.station_name).strip()
         safe_station = safe_station.replace(os.path.sep, "_")
         if not safe_station:
