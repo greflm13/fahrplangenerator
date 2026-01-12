@@ -60,7 +60,7 @@ def build_shapedict() -> Dict[str, List[Point]]:
 def build_list_index(list: Iterable, index: str) -> Dict[str, Any]:
     """Build an index from a list of namedtuples based on a specified key."""
     data: Dict[str, Any] = {}
-    for item in tqdm.tqdm(list, desc="Building index", unit=" items", ascii=True, dynamic_ncols=True):
+    for item in list:
         data[getattr(item, index)] = item
     return data
 

@@ -230,7 +230,7 @@ def create_page(
     return path
 
 
-def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: dict[str, dict[str, str]], shapedict):
+def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: dict[str, dict[str, str]], shapedict, loadingbars: bool = True):
     logger.info("computing our stops")
     ourstops = [ourstop.to_dict()]
     if ourstop.children is not None:
@@ -264,7 +264,11 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
     satset: set[Routedata] = set()
     sunset: set[Routedata] = set()
 
-    for trip in tqdm.tqdm(ourtrips, desc="Sorting trips", unit=" trips", ascii=True, dynamic_ncols=True):
+    if loadingbars:
+        trip_iterator = tqdm.tqdm(ourtrips, desc="Sorting trips", unit=" trips", ascii=True, dynamic_ncols=True)
+    else:
+        trip_iterator = ourtrips
+    for trip in trip_iterator:
         data = Routedata(
             dest=trip.trip_headsign,
             time=selected_stop_times[trip.trip_id].departure_time[:-3],
@@ -286,8 +290,12 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
     mondict: dict[str, dict[str, dict[str, list[Routedata]]]] = {}
     satdict: dict[str, dict[str, dict[str, list[Routedata]]]] = {}
     sundict: dict[str, dict[str, dict[str, list[Routedata]]]] = {}
-
-    for trip in tqdm.tqdm(mon, desc="Indexing Monday-Friday trips", unit=" trips", ascii=True, dynamic_ncols=True):
+    
+    if loadingbars:
+        mon_iterator = tqdm.tqdm(mon, desc="Indexing trips", unit=" trips", ascii=True, dynamic_ncols=True)
+    else:
+        mon_iterator = mon
+    for trip in mon_iterator:
         if not mondict.get(trip.line, False):
             mondict[trip.line] = {}
         if not mondict.get(trip.line, {}).get(trip.dire, False):
@@ -296,7 +304,11 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
             if not mondict[trip.line][trip.dire].get(f"t{i:02}", False):
                 mondict[trip.line][trip.dire][f"t{i:02}"] = []
         mondict[trip.line][trip.dire].setdefault(f"t{trip.time[:2]}", []).append(trip)
-    for trip in tqdm.tqdm(sat, desc="Indexing Saturday trips", unit=" trips", ascii=True, dynamic_ncols=True):
+    if loadingbars:
+        sat_iterator = tqdm.tqdm(sat, desc="Indexing Saturday trips", unit=" trips", ascii=True, dynamic_ncols=True)
+    else:
+        sat_iterator = sat
+    for trip in sat_iterator:
         if not satdict.get(trip.line, False):
             satdict[trip.line] = {}
         if not satdict.get(trip.line, {}).get(trip.dire, False):
@@ -305,7 +317,11 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
             if not satdict[trip.line][trip.dire].get(f"t{i:02}", False):
                 satdict[trip.line][trip.dire][f"t{i:02}"] = []
         satdict[trip.line][trip.dire].setdefault(f"t{trip.time[:2]}", []).append(trip)
-    for trip in tqdm.tqdm(sun, desc="Indexing Sunday trips", unit=" trips", ascii=True, dynamic_ncols=True):
+    if loadingbars:
+        sun_iterator = tqdm.tqdm(sun, desc="Indexing Sunday trips", unit=" trips", ascii=True, dynamic_ncols=True)
+    else:
+        sun_iterator = sun
+    for trip in sun_iterator:
         if not sundict.get(trip.line, False):
             sundict[trip.line] = {}
         if not sundict.get(trip.line, {}).get(trip.dire, False):
@@ -340,7 +356,11 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
 
     try:
         tmpdir = tempfile.mkdtemp()
-        for line, dires in tqdm.tqdm(lines.items(), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True):
+        if loadingbars:
+            line_iterator = tqdm.tqdm(lines.items(), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True)
+        else:
+            line_iterator = lines.items()
+        for line, dires in line_iterator:
             if args.color == "random":
                 color = utils.generate_contrasting_vibrant_color()
             else:
@@ -379,7 +399,11 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
                         )
 
         pagelst: list[str] = []
-        for line in tqdm.tqdm(pages.values(), desc="Collecting pages", unit=" lines", ascii=True, dynamic_ncols=True):
+        if loadingbars:
+            line_iterator = tqdm.tqdm(pages.values(), desc="Collecting pages", unit=" lines", ascii=True, dynamic_ncols=True)
+        else:
+            line_iterator = pages.values()
+        for line in line_iterator:
             for dire in line.values():
                 if dire is not None:
                     pagelst.append(dire)

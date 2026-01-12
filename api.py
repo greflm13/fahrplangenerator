@@ -1,19 +1,64 @@
 #!/usr/bin/env python
 
 import os
+import re
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from contextlib import asynccontextmanager
 
 import modules.utils as utils
 import modules.db as db
 from modules.logger import logger
 from fahrplan import compute
 
+
+# Globals for preloaded GTFS data (populated at startup)
+SHAPEDICT = None
+STOP_HIERARCHY = None
+STOPSS = None
+STOPS = None
+DESTINATIONS = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager to load GTFS data at startup."""
+    global SHAPEDICT, STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS
+    try:
+        shapedict = utils.build_shapedict()
+        stops = db.get_table_data("stops")
+        stop_hierarchy = utils.build_stop_hierarchy()
+        stop_hierarchy = utils.query_stop_names(stop_hierarchy)
+        destinations = utils.build_dest_list()
+
+        stopss = {}
+        for stop in stop_hierarchy.values():
+            if stop.stop_name not in stopss:
+                stopss[stop.stop_name] = [stop.stop_id]
+            else:
+                stopss[stop.stop_name].append(stop.stop_id)
+
+        stops = utils.build_list_index(stops, "stop_id")
+
+        SHAPEDICT = shapedict
+        STOP_HIERARCHY = stop_hierarchy
+        STOPSS = stopss
+        STOPS = stops
+        DESTINATIONS = destinations
+
+        logger.info("Loaded GTFS data at startup")
+    except Exception as e:
+        logger.error(f"Error loading GTFS data at startup: {str(e)}")
+        # Leave globals as None so requests will return a clear HTTP error if data is not available
+    yield
+    # Cleanup code can be added here if needed
+
+
 # Initialize FastAPI app
-app = FastAPI(title="Fahrplan Generator API", description="Generate transit timetables", version="1.0.0")
+app = FastAPI(title="Fahrplan Generator API", description="Generate transit timetables", version="1.0.0", lifespan=lifespan)
 
 
 class FahrplanRequest(BaseModel):
@@ -53,29 +98,16 @@ async def generate_timetable(request: FahrplanRequest):
     try:
         args = Args(generate_map=request.generate_map, color=request.color, map_provider=request.map_provider, map_dpi=request.map_dpi)
 
-        if args.map:
-            shapedict = utils.build_shapedict()
-        else:
-            shapedict = None
-
-        try:
-            stops = db.get_table_data("stops")
-        except Exception:
+        # Use data preloaded at startup
+        global SHAPEDICT, STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS
+        if STOPS is None or STOP_HIERARCHY is None or DESTINATIONS is None or STOPSS is None or SHAPEDICT is None:
             raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
 
-        stop_hierarchy = utils.build_stop_hierarchy()
-        stop_hierarchy = utils.query_stop_names(stop_hierarchy)
-        destinations = utils.build_dest_list()
-
-        stopss = {}
-        for stop in stop_hierarchy.values():
-            if stop.stop_name not in stopss:
-                stopss[stop.stop_name] = [stop.stop_id]
-            else:
-                stopss[stop.stop_name].append(stop.stop_id)
-
-        stops = utils.build_list_index(stops, "stop_id")
-        logger.info("Loaded data")
+        shapedict = SHAPEDICT
+        stops = STOPS
+        stop_hierarchy = STOP_HIERARCHY
+        destinations = DESTINATIONS
+        stopss = STOPSS
 
         if request.station_name not in stopss:
             raise HTTPException(status_code=400, detail=f"Station '{request.station_name}' not found")
@@ -90,7 +122,15 @@ async def generate_timetable(request: FahrplanRequest):
             ourstop.children = combined_children
 
         logger.info(f"Generating timetable for {request.station_name}")
-        compute(ourstop, stops, args, destinations, shapedict)
+
+        # Set output filename to {station_name}.pdf (sanitized to be filesystem-safe)
+        safe_station = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", request.station_name).strip()
+        safe_station = safe_station.replace(os.path.sep, "_")
+        if not safe_station:
+            safe_station = "fahrplan"
+        args.output = f"{safe_station}.pdf"
+
+        compute(ourstop, stops, args, destinations, shapedict, False)
 
         if not os.path.exists(args.output):
             raise HTTPException(status_code=500, detail="Failed to generate PDF file")
