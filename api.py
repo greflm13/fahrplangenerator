@@ -2,6 +2,7 @@
 
 import os
 import re
+import tempfile
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -20,12 +21,13 @@ STOP_HIERARCHY = None
 STOPSS = None
 STOPS = None
 DESTINATIONS = None
+TMPDIR = "/tmp"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager to load GTFS data at startup."""
-    global SHAPEDICT, STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS
+    global SHAPEDICT, STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS, TMPDIR
     try:
         shapedict = utils.build_shapedict()
         stops = db.get_table_data("stops")
@@ -47,11 +49,27 @@ async def lifespan(app: FastAPI):
         STOPSS = stopss
         STOPS = stops
         DESTINATIONS = destinations
+        TMPDIR = tempfile.mkdtemp()
 
         logger.info("Loaded GTFS data at startup")
     except Exception as e:
         logger.error(f"Error loading GTFS data at startup: {str(e)}")
+
     yield
+
+    if os.path.exists(TMPDIR):
+        for filename in os.listdir(TMPDIR):
+            file_path = os.path.join(TMPDIR, filename)
+            try:
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+            except Exception as e:
+                logger.error(f"Error removing temporary file {file_path}: {str(e)}")
+        try:
+            os.rmdir(TMPDIR)
+            logger.info("Cleaned up temporary directory")
+        except Exception as e:
+            logger.error(f"Error removing temporary directory {TMPDIR}: {str(e)}")
 
 
 app = FastAPI(title="Fahrplan Generator API", description="Generate transit timetables", version="1.0.0", lifespan=lifespan)
@@ -122,7 +140,7 @@ async def generate_timetable(request: FahrplanRequest):
         safe_station = safe_station.replace(os.path.sep, "_")
         if not safe_station:
             safe_station = "fahrplan"
-        args.output = f"{safe_station}.pdf"
+        args.output = os.path.join(TMPDIR, f"{safe_station}.pdf")
 
         compute(ourstop, stops, args, destinations, shapedict, False)
 
