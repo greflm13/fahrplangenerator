@@ -14,7 +14,7 @@ from shapely.geometry import shape, Point
 
 from modules.logger import logger
 from modules.datatypes import HierarchyStop, Shape, Stop, Routedata
-from modules.db import update_location_cache, get_table_data, get_in_filtered_data, get_table_data_iter, get_most_frequent_values
+from modules.db import update_location_cache, get_table_data, get_table_data_iter, get_most_frequent_values
 
 if __package__ is None:
     PACKAGE = ""
