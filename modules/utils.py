@@ -258,85 +258,88 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
     except Exception:
         locationcache = {}
 
-    all_stg_data = get_table_data("stg")
-    stg_by_globid = {row.stg_globid: row.stg_name for row in all_stg_data}
+    # Load HST table once, handling both hst and stg column naming conventions
+    globid_to_name = {}
+    try:
+        all_hst_data = get_table_data("hst")
+        for row in all_hst_data:
+            # Try hst columns first, fall back to stg columns
+            globid = getattr(row, "hst_globid", None) or getattr(row, "stg_globid", None)
+            name = getattr(row, "hst_name", None) or getattr(row, "stg_name", None)
+            if globid and name:
+                globid_to_name[globid] = name
+    except Exception:
+        pass
+    try:
+        for stop in tqdm.tqdm(stop_hierarchy.values(), desc="Querying stop names", unit=" stops", ascii=True, dynamic_ncols=True):
+            if stop.stop_id in locationcache:
+                stop.stop_name = locationcache[stop.stop_id]
+                continue
 
-    for stop in tqdm.tqdm(stop_hierarchy.values(), desc="Querying stop names", unit=" stops", ascii=True, dynamic_ncols=True):
-        if stop.stop_id in locationcache:
-            stop.stop_name = locationcache[stop.stop_id]
-            continue
-
-        if stop.children is not None:
-            child_ids = [child.stop_id for child in stop.children]
-            child_names = [child.stop_name for child in stop.children]
-        else:
-            child_ids = []
-            child_names = [""]
-
-        stg_candidates = []
-        for stop_id in [stop.stop_id] + child_ids:
-            try:
-                globid = stop_id.split("_", 1)[1]
-                if globid in stg_by_globid:
-                    stg_candidates.append((globid, stg_by_globid[globid]))
-            except (IndexError, KeyError):
-                pass
-
-        if stg_candidates:
-            stop.stop_name = stg_candidates[0][1]
-            locationcache[stop.stop_id] = stop.stop_name
-        else:
-            if stop.stop_name not in child_names and stop.stop_name not in child_names[0]:
-                if stop.stop_id not in locationcache:
-                    logger.info("Stop not found in cache or STG: %s", stop.stop_id)
-                    found = False
-                    if stop.children is not None:
-                        attempts = [(stop.stop_lat, stop.stop_lon)] + [(child.stop_lat, child.stop_lon) for child in stop.children]
-                    else:
-                        attempts = [(stop.stop_lat, stop.stop_lon)]
-                    for attempt in attempts:
-                        logger.info("Attempting to lookup coordinates: %s", attempt)
-                        location_lookup = get_place(attempt)
-                        if (
-                            "name" in location_lookup
-                            and location_lookup["name"] != ""
-                            and location_lookup.get("osm_value") in ["bus_stop", "stop", "station", "train_station", "halt"]
-                        ):
-                            stop.stop_name = location_lookup["name"]
-                            locationcache[stop.stop_id] = location_lookup["name"]
-                            logger.info("Found stop name '%s' for stop ID %s", stop.stop_name, stop.stop_id)
-                            found = True
-                            break
-                    if not found:
-                        if child_names[0] != "":
-                            stop.stop_name = child_names[0]
-                            locationcache[stop.stop_id] = child_names[0]
-                        else:
-                            locationcache[stop.stop_id] = stop.stop_name
-            elif stop.stop_name in child_names[0]:
-                locationcache[stop.stop_id] = child_names[0]
+            if stop.children is not None:
+                child_ids = [child.stop_id for child in stop.children]
+                child_names = [child.stop_name for child in stop.children]
             else:
+                child_ids = []
+                child_names = [""]
+
+            hst_candidates = []
+            for stop_id in [stop.stop_id] + child_ids:
+                try:
+                    globid = stop_id.split("_", 1)[1]
+                    if globid in globid_to_name:
+                        hst_candidates.append((globid, globid_to_name[globid]))
+                except (IndexError, KeyError):
+                    pass
+
+            if hst_candidates:
+                stop.stop_name = hst_candidates[0][1]
                 locationcache[stop.stop_id] = stop.stop_name
-            stop.stop_name = locationcache[stop.stop_id]
+            else:
+                if stop.stop_name not in child_names and stop.stop_name not in child_names[0]:
+                    if stop.stop_id not in locationcache:
+                        logger.info("Stop not found in cache or HST: %s", stop.stop_id)
+                        found = False
+                        if stop.children is not None:
+                            attempts = [(stop.stop_lat, stop.stop_lon)] + [(child.stop_lat, child.stop_lon) for child in stop.children]
+                        else:
+                            attempts = [(stop.stop_lat, stop.stop_lon)]
+                        for attempt in attempts:
+                            logger.info("Attempting to lookup coordinates: %s", attempt)
+                            location_lookup = get_place(attempt)
+                            if (
+                                "name" in location_lookup
+                                and location_lookup["name"] != ""
+                                and location_lookup.get("osm_value") in ["bus_stop", "stop", "station", "train_station", "halt"]
+                            ):
+                                stop.stop_name = location_lookup["name"]
+                                locationcache[stop.stop_id] = location_lookup["name"]
+                                logger.info("Found stop name '%s' for stop ID %s", stop.stop_name, stop.stop_id)
+                                found = True
+                                break
+                        if not found:
+                            if child_names[0] != "":
+                                stop.stop_name = child_names[0]
+                                locationcache[stop.stop_id] = child_names[0]
+                            else:
+                                locationcache[stop.stop_id] = stop.stop_name
+                elif stop.stop_name in child_names[0]:
+                    locationcache[stop.stop_id] = child_names[0]
+                else:
+                    locationcache[stop.stop_id] = stop.stop_name
+                stop.stop_name = locationcache[stop.stop_id]
 
-        if stop.children is not None:
-            for child in stop.children:
-                locationcache[child.stop_id] = locationcache[stop.stop_id]
-
-    update_location_cache(locationcache)
+            if stop.children is not None:
+                for child in stop.children:
+                    locationcache[child.stop_id] = locationcache[stop.stop_id]
+    finally:
+        update_location_cache(locationcache)
 
     return stop_hierarchy
 
 
 def get_stop_name(stop_id: str) -> str:
     return get_table_data("location_cache", columns=["name"], filters={"stop_id": stop_id})[0]
-
-
-def load_hst_json(json: Dict):
-    id_mapping = {}
-    for steig in json["features"]:
-        id_mapping[steig["properties"]["stg_globid"]] = steig["properties"]["stg_name"]
-    return id_mapping
 
 
 def build_dest_list() -> Dict[str, Dict[str, str]]:

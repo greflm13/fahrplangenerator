@@ -1,6 +1,5 @@
 import os
 import csv
-import json
 import sqlite3
 from collections import namedtuple
 
@@ -36,7 +35,7 @@ PRIMARY_KEYS = {
     "pathways": "pathway_id",
     "routes": "route_id",
     "shapes": ("shape_id", "shape_pt_sequence"),
-    "stg": "stg_id",
+    "hst": "FID",
     "stop_times": ("trip_id", "stop_sequence"),
     "stops": "stop_id",
     "transfers": ("from_stop_id", "to_stop_id"),
@@ -47,7 +46,7 @@ INDICES = {
     "calendar": ["service_id"],
     "routes": ["route_id"],
     "shapes": ["shape_id"],
-    "stg": ["stg_globid"],
+    "hst": ["stg_globid", "hst_globid"],
     "stop_times": ["stop_id", "trip_id"],
     "stops": ["stop_id", "stop_name"],
     "trips": ["route_id", "service_id"],
@@ -90,24 +89,35 @@ def load_gtfs(folder: str, agency_id: int, append=True) -> None:
                 con.commit()
 
 
-def load_stg_json(file: str, append=True) -> None:
-    """Load STG JSON data."""
+def load_hst_csv(file: str, append=True) -> None:
+    """Load HST CSV data."""
     data_path = os.path.join(file)
-    with open(data_path, "r", encoding="utf-8-sig") as f:
-        jsondata = [feature["properties"] for feature in json.load(f)["features"]]
-        header = jsondata[0].keys()
-        primary_key = PRIMARY_KEYS.get("stg")
+    typ = "hst"
+    for file in os.listdir(data_path):
+        if not file.endswith(".csv"):
+            continue
+        with open(os.path.join(data_path, file), "r", encoding="utf-8-sig") as f:
+            csvdata = list(csv.reader(f, skipinitialspace=True))
+        header = csvdata[0]
+        data = csvdata[1:]
+        primary_key = PRIMARY_KEYS.get(typ)
         amount = ",".join(["?"] * len(header))
         if not append:
-            con.execute("DROP TABLE IF EXISTS stg")
+            con.execute(f"DROP TABLE IF EXISTS {typ}")
+            append = True
         if primary_key:
             pk_clause = ", ".join(primary_key) if isinstance(primary_key, tuple) else primary_key
-            con.execute(f"CREATE TABLE IF NOT EXISTS stg({','.join(header)}, PRIMARY KEY ({pk_clause}))")
+            con.execute(f"CREATE TABLE IF NOT EXISTS {typ}({','.join(header)}, PRIMARY KEY ({pk_clause}))")
         else:
-            con.execute(f"CREATE TABLE IF NOT EXISTS stg({','.join(header)})")
-        values = [tuple(record.values()) for record in jsondata]
-        con.executemany(f"INSERT OR REPLACE INTO stg VALUES ({amount})", values)
-        con.commit()
+            con.execute(f"CREATE TABLE IF NOT EXISTS {typ}({','.join(header)})")
+        table_cols = [col.name for col in con.execute(f"PRAGMA table_info({typ})").fetchall()]
+        for col in header:
+            if col not in table_cols:
+                con.execute(f"ALTER TABLE {typ} ADD COLUMN {col}")
+        con.executemany(f"INSERT OR REPLACE INTO {typ} ({','.join(header)}) VALUES ({amount})", data)
+    for index_col in INDICES.get(typ, []):
+        con.execute(f"CREATE INDEX IF NOT EXISTS idx_{typ}_{index_col} ON {typ} ({index_col})")
+    con.commit()
 
 
 def update_location_cache(mappings: dict) -> None:

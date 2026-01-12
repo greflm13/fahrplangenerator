@@ -407,7 +407,7 @@ def main():
     parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
     parser.add_argument("-o", "--output", help="Output file", type=str, required=False, dest="output", default="fahrplan.pdf")
     parser.add_argument("-m", "--map", help="Generate maps", action="store_true", dest="map")
-    parser.add_argument("-j", "--stop-name-json", help="Stop name mapping json", required=False, type=str, dest="mapping_json")
+    parser.add_argument("-s", "--stop-name-csv", help="Stop name mapping csv folder", required=False, type=str, dest="mapping_csv")
     parser.add_argument("-r", "--reset-db", help="Reset local database", action="store_true", dest="reset_db")
     parser.add_argument("--dpi", help="map dpi", type=int, dest="map_dpi")
     parser.add_argument("--no-logo", action="store_false", dest="logo")
@@ -426,8 +426,8 @@ def main():
     else:
         append = True
 
-    if args.mapping_json:
-        db.load_stg_json(args.mapping_json, append=append)
+    if args.mapping_csv:
+        db.load_hst_csv(args.mapping_csv, append=append)
 
     if len(args.input) > 0:
         for aid, folder in tqdm.tqdm(enumerate(args.input), total=len(args.input), desc="Loading data", unit="folder", ascii=True, dynamic_ncols=True):
