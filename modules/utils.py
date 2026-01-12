@@ -46,8 +46,7 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
 def build_shapedict(shapes: List) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = {}
-    for shap in tqdm.tqdm(shapes, desc="Building shapes", unit=" shapes", ascii=True, dynamic_ncols=True):
-        sid = shap.shape_id
+    for sid in tqdm.tqdm(shapes, desc="Building shapes", unit=" shapes", ascii=True, dynamic_ncols=True):
         logger.debug("Processing shape ID: %s", sid)
         shapedict[sid] = []
         for shapeline in get_table_data_iter("shapes", filters={"shape_id": sid}, columns=["shape_pt_lon", "shape_pt_lat", "shape_dist_traveled"]):
@@ -87,7 +86,7 @@ def prepare_linedraw_info(
     """Prepare line drawing information for selected shapes."""
     shapes: Set[Shape] = set()
     stop_points: Set[Tuple] = set()
-    end_stop_ids: Set[str] = set()
+    end_stop_names: Set[str] = set()
     for trip in trips:
         if trip.route_id == line and "d" + trip.direction_id == direction:
             if trip.shape_id != "":
@@ -115,9 +114,9 @@ def prepare_linedraw_info(
                         if len(geo) != 1:
                             linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
                         endstop = stops[times[-1].stop_id]
-                        end_stop_ids.add(get_stop_name(endstop["stop_id"]))
+                        end_stop_names.add(get_stop_name(endstop["stop_id"]))
     linedrawinfo["points"] = list(stop_points)
-    linedrawinfo["endstops"] = list(end_stop_ids)
+    linedrawinfo["endstops"] = list(end_stop_names)
     return linedrawinfo
 
 
@@ -268,7 +267,7 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
         else:
             child_ids = []
             child_names = [""]
-        database_query = [sid.split("_", 1)[1] for sid in [stop.stop_id] + child_ids]
+        database_query = [shap.split("_", 1)[1] for shap in [stop.stop_id] + child_ids]
         stg_data = get_in_filtered_data("stg", "stg_globid", database_query, columns=["stg_globid"])
         if len(stg_data) == 0:
             if stop.stop_name not in child_names and stop.stop_name not in child_names[0]:
@@ -316,7 +315,7 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
 
 
 def get_stop_name(stop_id: str) -> str:
-    return get_table_data("location_cache", columns=["name"], filters={"stop_id": stop_id})[0][0]
+    return get_table_data("location_cache", columns=["name"], filters={"stop_id": stop_id})[0]
 
 
 def load_hst_json(json: Dict):
@@ -332,6 +331,6 @@ def build_dest_list() -> Dict[str, Dict[str, str]]:
         if trip.route_id not in destinations:
             destinations[trip.route_id] = {}
         destinations[trip.route_id][f"d{trip.direction_id}"] = get_most_frequent_values(
-            "trips", "trip_headsign", filters={"route_id": trip.route_id, "direction_id": trip.direction_id}
+            "trips", column="trip_headsign", filters={"route_id": trip.route_id, "direction_id": trip.direction_id}
         )[0].trip_headsign
     return destinations
