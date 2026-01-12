@@ -1,0 +1,140 @@
+#!/usr/bin/env python
+
+import os
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+
+import modules.utils as utils
+import modules.db as db
+from modules.logger import logger
+from fahrplan import compute
+
+# Initialize FastAPI app
+app = FastAPI(title="Fahrplan Generator API", description="Generate transit timetables", version="1.0.0")
+
+
+class FahrplanRequest(BaseModel):
+    """Request model for timetable generation"""
+
+    station_name: str = Field(..., description="Name of the station/stop")
+    generate_map: bool = Field(default=False, description="Generate maps for routes")
+    color: str = Field(default="random", description="Timetable color (or 'random')")
+    map_provider: str = Field(default="BasemapAT", description="Map provider (BasemapAT, OPNVKarte, OSM, OSMDE, ORM, OTM, UN, SAT)")
+    map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution")
+
+
+class Args:
+    """Simple class to mimic argparse Namespace"""
+
+    def __init__(self, generate_map: bool = False, color: str = "random", map_provider: str = "BasemapAT", map_dpi: Optional[int] = None):
+        self.input = []
+        self.color = color
+        self.output = "fahrplan.pdf"
+        self.map = generate_map
+        self.mapping_csv = None
+        self.reset_db = False
+        self.map_dpi = map_dpi
+        self.logo = True
+        self.map_provider = map_provider
+
+
+@app.get("/")
+async def root():
+    """Health check endpoint"""
+    return {"status": "running", "message": "Fahrplan Generator API", "endpoints": {"POST /generate": "Generate a timetable", "GET /stations": "Get available stations"}}
+
+
+@app.post("/generate")
+async def generate_timetable(request: FahrplanRequest):
+    """Generate a transit timetable PDF for the given station."""
+    try:
+        args = Args(generate_map=request.generate_map, color=request.color, map_provider=request.map_provider, map_dpi=request.map_dpi)
+
+        if args.map:
+            shapedict = utils.build_shapedict()
+        else:
+            shapedict = None
+
+        try:
+            stops = db.get_table_data("stops")
+        except Exception:
+            raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
+
+        stop_hierarchy = utils.build_stop_hierarchy()
+        stop_hierarchy = utils.query_stop_names(stop_hierarchy)
+        destinations = utils.build_dest_list()
+
+        stopss = {}
+        for stop in stop_hierarchy.values():
+            if stop.stop_name not in stopss:
+                stopss[stop.stop_name] = [stop.stop_id]
+            else:
+                stopss[stop.stop_name].append(stop.stop_id)
+
+        stops = utils.build_list_index(stops, "stop_id")
+        logger.info("Loaded data")
+
+        if request.station_name not in stopss:
+            raise HTTPException(status_code=400, detail=f"Station '{request.station_name}' not found")
+
+        ourstop = stop_hierarchy[stopss[request.station_name][0]]
+        if len(stopss[request.station_name]) > 1:
+            combined_children = []
+            for stop_id in stopss[request.station_name]:
+                stop = stop_hierarchy[stop_id]
+                if stop.children is not None:
+                    combined_children.extend(stop.children)
+            ourstop.children = combined_children
+
+        logger.info(f"Generating timetable for {request.station_name}")
+        compute(ourstop, stops, args, destinations, shapedict)
+
+        if not os.path.exists(args.output):
+            raise HTTPException(status_code=500, detail="Failed to generate PDF file")
+
+        logger.info(f"Timetable generated: {args.output}")
+        return FileResponse(path=args.output, filename=os.path.basename(args.output), media_type="application/pdf")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating timetable: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}")
+
+
+@app.get("/stations")
+async def get_available_stations():
+    """
+    Get a list of all available stations in the database.
+    """
+    try:
+        stop_hierarchy = utils.build_stop_hierarchy()
+        stop_hierarchy = utils.query_stop_names(stop_hierarchy)
+
+        stations = sorted({stop.stop_name for stop in stop_hierarchy.values()})
+
+        return {"total": len(stations), "stations": stations}
+    except Exception as e:
+        logger.error(f"Error fetching stations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}")
+
+
+@app.get("/info")
+async def get_info():
+    """Get API information and available options"""
+    return {
+        "api_version": "1.0.0",
+        "title": "Fahrplan Generator API",
+        "description": "Generate transit timetables with optional maps",
+        "available_map_providers": ["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM", "OTM", "UN", "SAT"],
+        "endpoints": {"GET /": "Health check", "POST /generate": "Generate a timetable", "GET /stations": "Get available stations", "GET /info": "Get API information"},
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)

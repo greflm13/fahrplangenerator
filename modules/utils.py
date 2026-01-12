@@ -15,7 +15,7 @@ from shapely.geometry import shape, Point
 
 from modules.logger import logger
 from modules.datatypes import HierarchyStop, Shape, Stop, Routedata
-from modules.db import update_location_cache, get_table_data, get_table_data_iter, get_most_frequent_values
+from modules.db import update_location_cache, get_table_data, get_table_data_iter, get_most_frequent_values, get_in_filtered_data_iter
 
 if __package__ is None:
     PACKAGE = ""
@@ -68,7 +68,7 @@ def build_list_index(list: Iterable, index: str) -> Dict[str, Any]:
 def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
     """Index stop_times by trip_id for quick lookup."""
     idx: Dict[str, List] = {}
-    for st in get_table_data_iter("stop_times", filters={"trip_id": trip_ids}):
+    for st in get_in_filtered_data_iter("stop_times", column="trip_id", values=trip_ids):
         tid = getattr(st, "trip_id")
         if not tid:
             continue
