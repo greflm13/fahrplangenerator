@@ -2,7 +2,8 @@ import os
 import copy
 import random
 
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple
+from collections import defaultdict
 
 import tqdm
 import pandas as pd
@@ -43,29 +44,31 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
     return data
 
 
-def build_shapedict(shapes: List) -> Dict[str, List[Point]]:
+def build_shapedict() -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
-    shapedict: Dict[str, List] = {}
-    for sid in tqdm.tqdm(shapes, desc="Building shapes", unit=" shapes", ascii=True, dynamic_ncols=True):
-        logger.debug("Processing shape ID: %s", sid)
-        shapedict[sid] = []
-        for shapeline in get_table_data_iter("shapes", filters={"shape_id": sid}, columns=["shape_pt_lon", "shape_pt_lat", "shape_dist_traveled"]):
-            shapedict[sid].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
-    return shapedict
+    shapedict: Dict[str, List] = defaultdict(list)
+
+    all_shapes = get_table_data_iter("shapes", columns=["shape_id", "shape_pt_lon", "shape_pt_lat", "shape_dist_traveled"])
+
+    for shapeline in tqdm.tqdm(all_shapes, desc="Building shapes", unit=" points", ascii=True, dynamic_ncols=True):
+        sid = shapeline.shape_id
+        shapedict[sid].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
+
+    return dict(shapedict)
 
 
-def build_list_index(list: Iterable, index: str) -> Dict[str, Dict]:
-    """Build an index from a list of dictionaries based on a specified key."""
-    data: Dict[str, Dict] = {}
-    for item in list:
-        data[getattr(item, index)] = item._asdict()
+def build_list_index(list: Iterable, index: str) -> Dict[str, Any]:
+    """Build an index from a list of namedtuples based on a specified key."""
+    data: Dict[str, Any] = {}
+    for item in tqdm.tqdm(list, desc="Building index", unit=" items", ascii=True, dynamic_ncols=True):
+        data[getattr(item, index)] = item
     return data
 
 
-def build_stop_times_index(stop_times: List) -> Dict[str, List]:
+def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
     """Index stop_times by trip_id for quick lookup."""
     idx: Dict[str, List] = {}
-    for st in stop_times:
+    for st in get_table_data_iter("stop_times", filters={"trip_id": trip_ids}):
         tid = getattr(st, "trip_id")
         if not tid:
             continue
@@ -78,7 +81,7 @@ def prepare_linedraw_info(
     shapedict: Dict[str, List[Point]],
     stop_times: Dict[str, List],
     trips: Iterable,
-    stops: Dict[str, Dict[str, str]],
+    stops: Dict[str, Any],
     line,
     direction,
     ourstop: List[str],
@@ -105,7 +108,7 @@ def prepare_linedraw_info(
                         stop_points.update(
                             [
                                 (
-                                    Point(float(stops[stop.stop_id]["stop_lon"]), float(stops[stop.stop_id]["stop_lat"])),
+                                    Point(float(stops[stop.stop_id].stop_lon), float(stops[stop.stop_id].stop_lat)),
                                     Stop(stop.stop_id, get_stop_name(stop.stop_id)),
                                 )
                                 for stop in tim
@@ -114,7 +117,7 @@ def prepare_linedraw_info(
                         if len(geo) != 1:
                             linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
                         endstop = stops[times[-1].stop_id]
-                        end_stop_names.add(get_stop_name(endstop["stop_id"]))
+                        end_stop_names.add(get_stop_name(endstop.stop_id))
     linedrawinfo["points"] = list(stop_points)
     linedrawinfo["endstops"] = list(end_stop_names)
     return linedrawinfo

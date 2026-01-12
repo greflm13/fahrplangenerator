@@ -3,6 +3,7 @@
 import os
 import argparse
 import tempfile
+from typing import Any
 
 import PIL.Image
 import tqdm
@@ -229,7 +230,7 @@ def create_page(
     return path
 
 
-def compute(ourstop: HierarchyStop, stops: dict[str, dict], args, destinations: dict[str, dict[str, str]], shapedict):
+def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: dict[str, dict[str, str]], shapedict):
     logger.info("computing our stops")
     ourstops = [ourstop.to_dict()]
     if ourstop.children is not None:
@@ -255,7 +256,7 @@ def compute(ourstop: HierarchyStop, stops: dict[str, dict], args, destinations: 
         return
 
     selected_stop_times = utils.build_list_index(ourtimes, "trip_id")
-    stop_times = utils.build_stop_times_index(db.get_table_data("stop_times"))
+    stop_times = utils.build_stop_times_index([trip.trip_id for trip in ourtrips])
     calendar = utils.build_list_index(ourservs, "service_id")
     selected_routes = utils.build_list_index(ourroute, "route_id")
 
@@ -266,16 +267,16 @@ def compute(ourstop: HierarchyStop, stops: dict[str, dict], args, destinations: 
     for trip in tqdm.tqdm(ourtrips, desc="Sorting trips", unit=" trips", ascii=True, dynamic_ncols=True):
         data = Routedata(
             dest=trip.trip_headsign,
-            time=selected_stop_times[trip.trip_id]["departure_time"][:-3],
+            time=selected_stop_times[trip.trip_id].departure_time[:-3],
             line=trip.route_id,
             dire=f"d{trip.direction_id}",
             stop=ourstop.stop_name,
         )
-        if calendar[trip.service_id]["monday"] == "1":
+        if calendar[trip.service_id].monday == "1":
             monset.add(data)
-        if calendar[trip.service_id]["saturday"] == "1":
+        if calendar[trip.service_id].saturday == "1":
             satset.add(data)
-        if calendar[trip.service_id]["sunday"] == "1":
+        if calendar[trip.service_id].sunday == "1":
             sunset.add(data)
 
     mon = sorted(monset, key=lambda x: x.time)
@@ -353,7 +354,7 @@ def compute(ourstop: HierarchyStop, stops: dict[str, dict], args, destinations: 
                     if not isinstance(page, str):
                         page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
                     pages[line][k] = create_page(
-                        selected_routes[line]["route_short_name"],
+                        selected_routes[line].route_short_name,
                         dest,
                         ourstop,
                         page,
@@ -438,7 +439,7 @@ def main():
                 logger.error("Input folder %s does not exist", folder)
 
     if args.map:
-        shapedict = utils.build_shapedict(db.get_table_data("shapes", columns=["shape_id"], distinct=True))
+        shapedict = utils.build_shapedict()
     else:
         shapedict = None
 
@@ -459,7 +460,14 @@ def main():
 
     choices = sorted({stop.stop_name for stop in stop_hierarchy.values()})
     while True:
-        choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
+        try:
+            choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
+        except KeyboardInterrupt:
+            print()
+            break
+        if choice is None:
+            print()
+            break
         ourstop: HierarchyStop
         if len(stopss[choice]) == 1:
             ourstop = stop_hierarchy[stopss[choice][0]]
