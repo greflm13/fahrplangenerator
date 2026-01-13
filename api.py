@@ -17,7 +17,7 @@ from fahrplan import compute
 
 
 STOP_HIERARCHY = None
-STOPSS = None
+STOP_ID_MAPPING = None
 STOPS = None
 DESTINATIONS = None
 TMPDIR = "/tmp"
@@ -26,24 +26,24 @@ TMPDIR = "/tmp"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager to load GTFS data at startup."""
-    global STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS, TMPDIR
+    global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS, TMPDIR
     try:
         stops = db.get_table_data("stops")
         stop_hierarchy = utils.build_stop_hierarchy()
         stop_hierarchy = utils.query_stop_names(stop_hierarchy)
         destinations = utils.build_dest_list()
 
-        stopss = {}
+        stop_id_mapping = {}
         for stop in stop_hierarchy.values():
-            if stop.stop_name not in stopss:
-                stopss[stop.stop_name] = [stop.stop_id]
+            if stop.stop_name not in stop_id_mapping:
+                stop_id_mapping[stop.stop_name] = [stop.stop_id]
             else:
-                stopss[stop.stop_name].append(stop.stop_id)
+                stop_id_mapping[stop.stop_name].append(stop.stop_id)
 
         stops = utils.build_list_index(stops, "stop_id")
 
         STOP_HIERARCHY = stop_hierarchy
-        STOPSS = stopss
+        STOP_ID_MAPPING = stop_id_mapping
         STOPS = stops
         DESTINATIONS = destinations
         TMPDIR = tempfile.mkdtemp()
@@ -109,22 +109,22 @@ async def generate_timetable(request: FahrplanRequest):
     try:
         args = Args(generate_map=request.generate_map, color=request.color, map_provider=request.map_provider, map_dpi=request.map_dpi)
 
-        global  STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS
-        if STOPS is None or STOP_HIERARCHY is None or DESTINATIONS is None or STOPSS is None:
+        global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS
+        if STOPS is None or STOP_HIERARCHY is None or DESTINATIONS is None or STOP_ID_MAPPING is None:
             raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
 
         stops = STOPS
         stop_hierarchy = STOP_HIERARCHY
         destinations = DESTINATIONS
-        stopss = STOPSS
+        stop_id_mapping = STOP_ID_MAPPING
 
-        if request.station_name not in stopss:
+        if request.station_name not in stop_id_mapping:
             raise HTTPException(status_code=400, detail=f"Station '{request.station_name}' not found")
 
-        ourstop = stop_hierarchy[stopss[request.station_name][0]]
-        if len(stopss[request.station_name]) > 1:
+        ourstop = stop_hierarchy[stop_id_mapping[request.station_name][0]]
+        if len(stop_id_mapping[request.station_name]) > 1:
             combined_children = []
-            for stop_id in stopss[request.station_name]:
+            for stop_id in stop_id_mapping[request.station_name]:
                 stop = stop_hierarchy[stop_id]
                 if stop.children is not None:
                     combined_children.extend(stop.children)
@@ -158,11 +158,13 @@ async def get_available_stations():
     """
     Get a list of all available stations in the database.
     """
+    global STOP_ID_MAPPING
+    if STOP_ID_MAPPING is None:
+        raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
     try:
-        stop_hierarchy = utils.build_stop_hierarchy()
-        stop_hierarchy = utils.query_stop_names(stop_hierarchy)
+        stations = STOP_ID_MAPPING
 
-        stations = sorted({stop.stop_name for stop in stop_hierarchy.values()})
+        stations = sorted(STOP_ID_MAPPING.keys())
 
         return {"total": len(stations), "stations": stations}
     except Exception as e:

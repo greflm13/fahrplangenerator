@@ -467,17 +467,17 @@ def main():
     stop_hierarchy = utils.build_stop_hierarchy()
     stop_hierarchy = utils.query_stop_names(stop_hierarchy)
     destinations = utils.build_dest_list()
-    stopss = {}
+    stop_id_mapping = {}
     for stop in stop_hierarchy.values():
-        if stop.stop_name not in stopss:
-            stopss[stop.stop_name] = [stop.stop_id]
+        if stop.stop_name not in stop_id_mapping:
+            stop_id_mapping[stop.stop_name] = [stop.stop_id]
         else:
-            stopss[stop.stop_name].append(stop.stop_id)
+            stop_id_mapping[stop.stop_name].append(stop.stop_id)
     stops = utils.build_list_index(stops, "stop_id")
 
     logger.info("loaded data")
 
-    choices = sorted({stop.stop_name for stop in stop_hierarchy.values()})
+    choices = sorted(stop_id_mapping.keys())
     while True:
         try:
             choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
@@ -488,15 +488,15 @@ def main():
             print()
             break
         ourstop: HierarchyStop
-        if len(stopss[choice]) == 1:
-            ourstop = stop_hierarchy[stopss[choice][0]]
+        if len(stop_id_mapping[choice]) == 1:
+            ourstop = stop_hierarchy[stop_id_mapping[choice][0]]
         else:
             combined_children = []
-            for stop_id in stopss[choice]:
+            for stop_id in stop_id_mapping[choice]:
                 stop = stop_hierarchy[stop_id]
                 if stop.children is not None:
                     combined_children.extend(stop.children)
-            ourstop = stop_hierarchy[stopss[choice][0]]
+            ourstop = stop_hierarchy[stop_id_mapping[choice][0]]
             ourstop.children = combined_children
 
         compute(ourstop, stops, args, destinations)

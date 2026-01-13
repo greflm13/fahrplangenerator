@@ -55,10 +55,10 @@
         ]
       },
       {
-        "name": "Python Debugger: db.py",
+        "name": "Python Debugger: api.py",
         "type": "debugpy",
         "request": "launch",
-        "program": "modules/db.py",
+        "program": "api.py",
         "console": "integratedTerminal",
         "args": []
       }
