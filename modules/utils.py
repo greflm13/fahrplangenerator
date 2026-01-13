@@ -254,7 +254,7 @@ def get_place(coords: Tuple[float, float]):
         return {}
 
 
-def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, HierarchyStop]:
+def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop], loadingbars=True) -> Dict[str, HierarchyStop]:
     try:
         locationcache = get_table_data("location_cache")
         locationcache = {entry.stop_id: entry.name for entry in locationcache}
@@ -274,7 +274,11 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop]) -> Dict[str, Hier
     except Exception:
         pass
     try:
-        for stop in tqdm.tqdm(stop_hierarchy.values(), desc="Querying stop names", unit=" stops", ascii=True, dynamic_ncols=True):
+        if loadingbars:
+            iterator = tqdm.tqdm(stop_hierarchy.values(), desc="Querying stop names", unit=" stops", ascii=True, dynamic_ncols=True)
+        else:
+            iterator = stop_hierarchy.values()
+        for stop in iterator:
             if stop.stop_id in locationcache:
                 stop.stop_name = locationcache[stop.stop_id]
                 continue

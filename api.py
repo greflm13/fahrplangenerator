@@ -2,6 +2,7 @@
 
 import os
 import re
+import logging
 import tempfile
 from typing import Optional
 
@@ -12,9 +13,10 @@ from contextlib import asynccontextmanager
 
 import modules.utils as utils
 import modules.db as db
-from modules.logger import logger
+
 from fahrplan import compute
 
+logger = logging.getLogger("uvicorn.error")
 
 STOP_HIERARCHY = None
 STOP_ID_MAPPING = None
@@ -30,7 +32,7 @@ async def lifespan(app: FastAPI):
     try:
         stops = db.get_table_data("stops")
         stop_hierarchy = utils.build_stop_hierarchy()
-        stop_hierarchy = utils.query_stop_names(stop_hierarchy)
+        stop_hierarchy = utils.query_stop_names(stop_hierarchy, loadingbars=False)
         destinations = utils.build_dest_list()
 
         stop_id_mapping = {}
@@ -48,7 +50,8 @@ async def lifespan(app: FastAPI):
         DESTINATIONS = destinations
         TMPDIR = tempfile.mkdtemp()
 
-        logger.info("Loaded GTFS data at startup")
+        logger.info("Loaded GTFS data")
+        logger.info(f"Temporary directory created at {TMPDIR}")
     except Exception as e:
         logger.error(f"Error loading GTFS data at startup: {str(e)}")
 
