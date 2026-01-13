@@ -230,7 +230,7 @@ def create_page(
     return path
 
 
-def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: dict[str, dict[str, str]], shapedict, loadingbars: bool = True):
+def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: dict[str, dict[str, str]], loadingbars: bool = True):
     logger.info("computing our stops")
     ourstops = [ourstop.to_dict()]
     if ourstop.children is not None:
@@ -390,7 +390,7 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
                             page=mappage,
                             stop=ourstop,
                             logo=tmpfile,
-                            routes=utils.prepare_linedraw_info(shapedict, stop_times, ourtrips, stops, line, k, [stop["stop_id"] for stop in ourstops]),
+                            routes=utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, [stop["stop_id"] for stop in ourstops]),
                             color=color,
                             label_rotation=15,
                             tmpdir=tmpdir,
@@ -462,11 +462,6 @@ def main():
             else:
                 logger.error("Input folder %s does not exist", folder)
 
-    if args.map:
-        shapedict = utils.build_shapedict()
-    else:
-        shapedict = None
-
     stops = db.get_table_data("stops")
 
     stop_hierarchy = utils.build_stop_hierarchy()
@@ -504,7 +499,7 @@ def main():
             ourstop = stop_hierarchy[stopss[choice][0]]
             ourstop.children = combined_children
 
-        compute(ourstop, stops, args, destinations, shapedict)
+        compute(ourstop, stops, args, destinations)
 
 
 if __name__ == "__main__":

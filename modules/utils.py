@@ -44,13 +44,13 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
     return data
 
 
-def build_shapedict() -> Dict[str, List[Point]]:
+def build_shapedict(shape_ids: List[str]) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = defaultdict(list)
 
-    all_shapes = get_table_data_iter("shapes", columns=["shape_id", "shape_pt_lon", "shape_pt_lat", "shape_dist_traveled"])
+    shapes = get_in_filtered_data_iter("shapes", column="shape_id", values=shape_ids)
 
-    for shapeline in tqdm.tqdm(all_shapes, desc="Building shapes", unit=" points", ascii=True, dynamic_ncols=True):
+    for shapeline in shapes:
         sid = shapeline.shape_id
         shapedict[sid].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
 
@@ -78,7 +78,6 @@ def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
 
 
 def prepare_linedraw_info(
-    shapedict: Dict[str, List[Point]],
     stop_times: Dict[str, List],
     trips: Iterable,
     stops: Dict[str, Any],
@@ -94,6 +93,7 @@ def prepare_linedraw_info(
         if trip.route_id == line and "d" + trip.direction_id == direction:
             if trip.shape_id != "":
                 shapes.add(Shape(trip.shape_id, trip.trip_id))
+    shapedict = build_shapedict([shap.shapeid for shap in shapes])
     linedrawinfo = {"shapes": [], "points": [], "endstops": []}
     for shap in shapes:
         times = stop_times[shap.tripid]

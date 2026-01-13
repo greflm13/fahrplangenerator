@@ -16,7 +16,6 @@ from modules.logger import logger
 from fahrplan import compute
 
 
-SHAPEDICT = None
 STOP_HIERARCHY = None
 STOPSS = None
 STOPS = None
@@ -27,9 +26,8 @@ TMPDIR = "/tmp"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager to load GTFS data at startup."""
-    global SHAPEDICT, STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS, TMPDIR
+    global STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS, TMPDIR
     try:
-        shapedict = utils.build_shapedict()
         stops = db.get_table_data("stops")
         stop_hierarchy = utils.build_stop_hierarchy()
         stop_hierarchy = utils.query_stop_names(stop_hierarchy)
@@ -44,7 +42,6 @@ async def lifespan(app: FastAPI):
 
         stops = utils.build_list_index(stops, "stop_id")
 
-        SHAPEDICT = shapedict
         STOP_HIERARCHY = stop_hierarchy
         STOPSS = stopss
         STOPS = stops
@@ -112,11 +109,10 @@ async def generate_timetable(request: FahrplanRequest):
     try:
         args = Args(generate_map=request.generate_map, color=request.color, map_provider=request.map_provider, map_dpi=request.map_dpi)
 
-        global SHAPEDICT, STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS
-        if STOPS is None or STOP_HIERARCHY is None or DESTINATIONS is None or STOPSS is None or SHAPEDICT is None:
+        global  STOP_HIERARCHY, STOPSS, STOPS, DESTINATIONS
+        if STOPS is None or STOP_HIERARCHY is None or DESTINATIONS is None or STOPSS is None:
             raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
 
-        shapedict = SHAPEDICT
         stops = STOPS
         stop_hierarchy = STOP_HIERARCHY
         destinations = DESTINATIONS
@@ -142,7 +138,7 @@ async def generate_timetable(request: FahrplanRequest):
             safe_station = "fahrplan"
         args.output = os.path.join(TMPDIR, f"{safe_station}.pdf")
 
-        compute(ourstop, stops, args, destinations, shapedict, False)
+        compute(ourstop, stops, args, destinations, False)
 
         if not os.path.exists(args.output):
             raise HTTPException(status_code=500, detail="Failed to generate PDF file")
