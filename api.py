@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
         STOP_ID_MAPPING = stop_id_mapping
         STOPS = stops
         DESTINATIONS = destinations
-        TMPDIR = tempfile.mkdtemp(prefix="fahrplan_api")
+        TMPDIR = tempfile.mkdtemp(prefix="fahrplan_api_")
 
         logger.info("Loaded GTFS data")
         logger.info("Temporary directory created at %s", TMPDIR)
