@@ -20,7 +20,7 @@ from reportlab.lib.utils import ImageReader
 import modules.utils as utils
 import modules.db as db
 
-from modules.map import draw_map
+from modules.map import draw_map, MAP_PROVIDERS
 from modules.logger import logger
 from modules.datatypes import HierarchyStop, Routedata
 
@@ -439,7 +439,7 @@ def main():
     parser.add_argument(
         "--map-provider",
         type=str,
-        choices=["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM", "OTM", "UN", "SAT"],
+        choices=MAP_PROVIDERS.keys(),
         default="BasemapAT",
         help="Map provider for the basemap (default: BasemapAT)",
         dest="map_provider",

@@ -24,6 +24,17 @@ from modules.utils import scale
 from modules.logger import logger
 from modules.datatypes import HierarchyStop
 
+MAP_PROVIDERS = {
+    "BasemapAT": providers.BasemapAT.highdpi,
+    "OPNVKarte": providers.OPNVKarte,
+    "OSM": providers.OpenStreetMap.Mapnik,
+    "OSMDE": providers.OpenStreetMap.DE,
+    "ORM": providers.OpenRailwayMap,
+    "OTM": providers.OpenTopoMap,
+    "UN": providers.UN.ClearMap,
+    "SAT": providers.Esri.WorldImagery,
+}
+
 
 def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = None, min_size: int = 3, max_size: int = 60) -> None:
     try:
@@ -343,14 +354,4 @@ def plot_stops_on_ax(
 
 def get_provider_source(provider_name: str) -> TileProvider:
     """Get the contextily provider source based on the provider name."""
-    provider_map = {
-        "BasemapAT": providers.BasemapAT.highdpi,
-        "OPNVKarte": providers.OPNVKarte,
-        "OSM": providers.OpenStreetMap.Mapnik,
-        "OSMDE": providers.OpenStreetMap.DE,
-        "ORM": providers.OpenRailwayMap,
-        "OTM": providers.OpenTopoMap,
-        "UN": providers.UN.ClearMap,
-        "SAT": providers.Esri.WorldImagery,
-    }
-    return provider_map.get(provider_name, providers.BasemapAT.highdpi)
+    return MAP_PROVIDERS.get(provider_name, providers.BasemapAT.highdpi)

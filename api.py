@@ -15,6 +15,7 @@ import modules.utils as utils
 import modules.db as db
 
 from fahrplan import compute
+from modules.map import MAP_PROVIDERS
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -173,6 +174,12 @@ async def get_available_stations():
     except Exception as e:
         logger.error(f"Error fetching stations: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}")
+
+
+@app.get("/map-providers")
+async def get_map_providers():
+    """Get a list of available map providers."""
+    return {"map_providers": list(MAP_PROVIDERS.keys())}
 
 
 @app.get("/info")
