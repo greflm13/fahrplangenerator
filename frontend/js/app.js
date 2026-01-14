@@ -14,6 +14,7 @@ async function fetchStations(query = "") {
   const response = await fetch(`/api/stations?query=${encodeURIComponent(query)}`);
   const stations = await response.json();
   const dataList = document.getElementById("station_datalist");
+  dataList.innerHTML = ""; // Clear existing options
   stations.stations.forEach((station) => {
     const option = document.createElement("option");
     option.value = station;
