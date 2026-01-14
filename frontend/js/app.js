@@ -1,9 +1,11 @@
 function toggleMapOptions() {
   const mapOptions = document.getElementById("map-options");
   if (document.getElementById("generate-map").checked) {
-    mapOptions.style.display = "block";
+    // mapOptions.style.display = "block";
+    mapOptions.disabled = false;
   } else {
-    mapOptions.style.display = "none";
+    // mapOptions.style.display = "none";
+    mapOptions.disabled = true;
   }
 }
 
@@ -47,6 +49,8 @@ async function handleFormSubmit(event) {
   }
 
   const formData = new FormData(document.getElementById("schedule-form"));
+  // disable form after submit to prevent api spam
+  const form = document.getElementById("schedule-form");
 
   const response = await fetch("/api/generate", {
     method: "POST",
