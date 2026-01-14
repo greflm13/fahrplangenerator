@@ -9,6 +9,54 @@ function toggleMapOptions() {
   }
 }
 
+function isContrasting(color) {
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness < 157;
+}
+
+function isVibrant(color) {
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+
+  const maxChannel = Math.max(r, g, b);
+  const minChannel = Math.min(r, g, b);
+  const saturation = maxChannel ? (maxChannel - minChannel) / maxChannel : 0;
+
+  return saturation > 0.2 && saturation < 0.9;
+}
+
+function generateContrastingVibrantColor() {
+  const chars = "0123456789abcdef";
+
+  while (true) {
+    let color = "#";
+    for (let i = 0; i < 6; i++) {
+      color += chars[Math.floor(Math.random() * chars.length)];
+    }
+
+    if (isContrasting(color) && isVibrant(color)) {
+      return color;
+    }
+  }
+}
+
+function generateColor() {
+  const color = generateContrastingVibrantColor();
+  const colorPicker = document.getElementById("color");
+  document.documentElement.style.setProperty("--acc-color", color);
+  colorPicker.value = color;
+}
+
+function changeColor() {
+  const color = document.getElementById("color").value;
+  document.documentElement.style.setProperty("--acc-color", color);
+}
+
 async function fetchStations(query = "") {
   if (query === "") {
     const response = await fetch("/api/stations");
@@ -91,6 +139,7 @@ document
   .addEventListener("change", toggleMapOptions);
 
 window.onload = function () {
+  generateColor();
   toggleMapOptions();
   fetchMapProviders();
   fetchStations();
