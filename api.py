@@ -8,7 +8,7 @@ import tempfile
 # import urllib.parse
 from typing import Annotated, Optional
 
-from fastapi import FastAPI, HTTPException, Form
+from fastapi import FastAPI, HTTPException, Form, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
@@ -88,7 +88,7 @@ class FahrplanRequest(BaseModel):
     map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution")
 
 
-class Root(BaseModel):
+class RootResponse(BaseModel):
     """Response model for root endpoint"""
 
     status: str = Field(..., description="Status of the API")
@@ -96,14 +96,20 @@ class Root(BaseModel):
     endpoints: dict[str, str] = Field(..., description="Available API endpoints")
 
 
-class Stations(BaseModel):
+class StationsRequest(BaseModel):
+    """Request model for available stations"""
+
+    query: Optional[str] = Field(default=None, description="Search query for station names")
+
+
+class StationsResponse(BaseModel):
     """Response model for available stations"""
 
     total: int = Field(..., description="Total number of stations")
     stations: list[str] = Field(..., description="List of station names")
 
 
-class MapProviders(BaseModel):
+class MapProvidersResponse(BaseModel):
     """Response model for available map providers"""
 
     map_providers: list[str] = Field(..., description="List of map providers")
@@ -134,7 +140,7 @@ class Args:
         self.map_provider = map_provider
 
 
-@app.get("/", response_model=Root)
+@app.get("/", response_model=RootResponse)
 async def root():
     """Health check endpoint"""
     return {
@@ -201,8 +207,8 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}")
 
 
-@app.get("/stations", response_model=Stations)
-async def get_available_stations():
+@app.get("/stations", response_model=StationsResponse)
+async def get_available_stations(request: Annotated[StationsRequest, Query()]):
     """
     Get a list of all available stations in the database.
     """
@@ -214,13 +220,17 @@ async def get_available_stations():
 
         stations = sorted(STOP_ID_MAPPING.keys())
 
+        if request.query:
+            query_lower = request.query.lower()
+            stations = [station for station in stations if query_lower in station.lower()]
+
         return {"total": len(stations), "stations": stations}
     except Exception as e:
         logger.error(f"Error fetching stations: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}")
 
 
-@app.get("/map-providers", response_model=MapProviders)
+@app.get("/map-providers", response_model=MapProvidersResponse)
 async def get_map_providers():
     """Get a list of available map providers."""
     return {"map_providers": list(MAP_PROVIDERS.keys())}
