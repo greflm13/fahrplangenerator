@@ -12,6 +12,8 @@ from fastapi import FastAPI, HTTPException, Form, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 import modules.utils as utils
 import modules.db as db
@@ -56,9 +58,9 @@ async def lifespan(app: FastAPI):
         TMPDIR = tempfile.mkdtemp(dir="./tmp", prefix="fahrplan_api")
 
         logger.info("Loaded GTFS data")
-        logger.info(f"Temporary directory created at {TMPDIR}")
+        logger.info("Temporary directory created at %s", TMPDIR)
     except Exception as e:
-        logger.error(f"Error loading GTFS data at startup: {str(e)}")
+        logger.error("Error loading GTFS data at startup: %s", str(e))
 
     yield
 
@@ -69,15 +71,37 @@ async def lifespan(app: FastAPI):
                 if os.path.isfile(file_path):
                     os.remove(file_path)
             except Exception as e:
-                logger.error(f"Error removing temporary file {file_path}: {str(e)}")
+                logger.error("Error removing temporary file %s: %s", file_path, str(e))
         try:
             os.rmdir(TMPDIR)
             logger.info("Cleaned up temporary directory")
         except Exception as e:
-            logger.error(f"Error removing temporary directory {TMPDIR}: {str(e)}")
+            logger.error("Error removing temporary directory %s: %s", TMPDIR, str(e))
 
 
 app = FastAPI(title="Fahrplan Generator API", description="Generate transit timetables", version="1.0.0", lifespan=lifespan, root_path="/api")
+
+
+class RawRequestLoggerMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Capture the raw request headers and body
+        raw_headers = str(request.headers)
+        raw_body = (await request.body()).decode("utf-8")  # Decode to string for readability
+        raw_query_params = str(request.query_params)
+
+        raw_request = f"""
+        Method: {request.method}
+        URL: {str(request.url)}
+        Query Parameters: {raw_query_params}
+        Headers: {raw_headers}
+        Body: {raw_body}
+        """
+
+        print(f"Raw Request: {raw_request.strip()}")
+
+        # Process the request
+        response = await call_next(request)
+        return response
 
 
 class FahrplanRequest(BaseModel):
@@ -142,6 +166,9 @@ class Args:
         self.map_provider = map_provider
 
 
+app.add_middleware(RawRequestLoggerMiddleware)
+
+
 @app.get("/", response_model=RootResponse)
 async def root():
     """Health check endpoint"""
@@ -186,7 +213,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
                     combined_children.extend(stop.children)
             ourstop.children = combined_children
 
-        logger.info(f"Generating timetable for {request.station_name}")
+        logger.info("Generating timetable for %s", request.station_name)
 
         safe_station = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", request.station_name).strip()
         safe_station = safe_station.replace(os.path.sep, "_")
@@ -201,13 +228,13 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         if not os.path.exists(args.output):
             raise HTTPException(status_code=500, detail="Failed to generate PDF file")
 
-        logger.info(f"Timetable generated: {args.output}")
+        logger.info("Timetable generated: %s", args.output)
         return FileResponse(path=args.output, filename=os.path.basename(outfile), media_type="application/pdf")
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating timetable: {str(e)}")
+        logger.error("Error generating timetable: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}")
 
 
@@ -230,7 +257,7 @@ async def get_available_stations(request: Annotated[StationsRequest, Query()]):
 
         return {"total": len(stations), "stations": stations}
     except Exception as e:
-        logger.error(f"Error fetching stations: {str(e)}")
+        logger.error("Error fetching stations: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}")
 
 
