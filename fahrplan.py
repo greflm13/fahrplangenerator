@@ -137,8 +137,8 @@ def create_page(
     suntimes: dict[str, list[Routedata]],
     color: str,
     logo: tempfile._TemporaryFileWrapper | str | None = "</srgn>",
+    logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ):
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     logger.info(f"Create page for {line} - {dest}")
     limit = 0
     times = 0
@@ -255,18 +255,18 @@ def compute(
     loadingbars: bool = True,
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ):
-    logger.info("computing our stops")
+    logger.info("computing stops")
     ourstops = [stop.to_dict() for stop in ourstop]
-    logger.info("computing our times")
+    logger.info("computing times")
     stopids = [stop["stop_id"] for stop in ourstops]
     ourtimes = db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
-    logger.info("computing our trips")
+    logger.info("computing trips")
     times = db.get_in_filtered_data("stop_times", column="stop_id", values=stopids, columns=["trip_id"])
     ourtrips = db.get_in_filtered_data("trips", column="trip_id", values=times)
-    logger.info("computing our services")
+    logger.info("computing services")
     services = db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["service_id"])
     ourservs = db.get_in_filtered_data("calendar", column="service_id", values=services)
-    logger.info("computing our routes")
+    logger.info("computing routes")
     routeids = db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["route_id"])
     ourroute = db.get_in_filtered_data("routes", column="route_id", values=routeids)
 
@@ -274,6 +274,7 @@ def compute(
 
     if ourstops == []:
         print(f'Stop "{ourstop}" not found!')
+        logger.error('Stop "%s" not found!', ourstop)
         return
 
     selected_stop_times = utils.build_list_index(ourtimes, "trip_id")
@@ -404,6 +405,7 @@ def compute(
                         sundict.get(line, {}).get(k, {}),
                         color,
                         tmpfile,
+                        logger=logger,
                     )
                     if args.map:
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
@@ -417,6 +419,7 @@ def compute(
                             tmpdir=tmpdir,
                             map_provider=args.map_provider,
                             dpi=args.map_dpi,
+                            logger=logger,
                         )
 
         pagelst: list[str] = []

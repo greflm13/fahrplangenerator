@@ -156,9 +156,9 @@ def draw_map(
     dpi: int = 300,
     padding: int = 15,
     tmpdir: str = tempfile.gettempdir(),
+    logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ) -> str | None:
     """Draw map for selected routes."""
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     ax = None
 
     for route in routes["shapes"]:
@@ -177,7 +177,7 @@ def draw_map(
             gdf.plot(ax=ax, facecolor="none", edgecolor=color, figsize=figsize, linewidth=2)
 
     if ax is None:
-        logger.error("No routes to plot on map")
+        logger.info("No routes to plot on map")
         return None
 
     geometries = []
