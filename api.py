@@ -204,14 +204,15 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         if request.station_name not in stop_id_mapping:
             raise HTTPException(status_code=400, detail=f"Station '{request.station_name}' not found")
 
-        ourstop = stop_hierarchy[stop_id_mapping[request.station_name][0]]
-        if len(stop_id_mapping[request.station_name]) > 1:
-            combined_children = []
+        if len(stop_id_mapping[request.station_name]) == 1:
+            ourstop = [stop_hierarchy[stop_id_mapping[request.station_name][0]]]
+        else:
+            ourstop = []
             for stop_id in stop_id_mapping[request.station_name]:
                 stop = stop_hierarchy[stop_id]
                 if stop.children is not None:
-                    combined_children.extend(stop.children)
-            ourstop.children = combined_children
+                    ourstop.extend(stop.children)
+                ourstop.append(stop)
 
         logger.info("Generating timetable for %s", request.station_name)
 
