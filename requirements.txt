@@ -8,6 +8,7 @@ pandas~=2.3.3
 Pillow~=12.1.0
 pypdf~=6.6.0
 python_json_logger~=3.2.1
+python-multipart~=0.0.21
 questionary~=2.1.1
 reportlab~=4.2.5
 Requests~=2.32.5
