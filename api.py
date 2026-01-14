@@ -33,6 +33,8 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager to load GTFS data at startup."""
     global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS, TMPDIR
     try:
+        os.makedirs("./tmp", exist_ok=True)
+
         stops = db.get_table_data("stops")
         stop_hierarchy = utils.build_stop_hierarchy()
         stop_hierarchy = utils.query_stop_names(stop_hierarchy, loadingbars=False)
@@ -51,7 +53,7 @@ async def lifespan(app: FastAPI):
         STOP_ID_MAPPING = stop_id_mapping
         STOPS = stops
         DESTINATIONS = destinations
-        TMPDIR = tempfile.mkdtemp()
+        TMPDIR = tempfile.mkdtemp(dir="./tmp", prefix="fahrplan_api")
 
         logger.info("Loaded GTFS data")
         logger.info(f"Temporary directory created at {TMPDIR}")
@@ -190,7 +192,9 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         safe_station = safe_station.replace(os.path.sep, "_")
         if not safe_station:
             safe_station = "fahrplan"
-        args.output = os.path.join(TMPDIR, f"{safe_station}.pdf")
+        outfile = os.path.join(TMPDIR, f"{safe_station}.pdf")
+
+        _, args.output = tempfile.mkstemp(suffix=".pdf", prefix=f"{safe_station}_", dir=TMPDIR)
 
         compute(ourstop, stops, args, destinations, False)
 
@@ -198,7 +202,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
             raise HTTPException(status_code=500, detail="Failed to generate PDF file")
 
         logger.info(f"Timetable generated: {args.output}")
-        return FileResponse(path=args.output, filename=os.path.basename(args.output), media_type="application/pdf")
+        return FileResponse(path=args.output, filename=os.path.basename(outfile), media_type="application/pdf")
 
     except HTTPException:
         raise
