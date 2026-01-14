@@ -64,7 +64,7 @@ def load_gtfs(folder: str, agency_id: int, append=True) -> None:
                 with open(data_path, "r", encoding="utf-8-sig") as f:
                     csvdata = list(csv.reader(f, skipinitialspace=True))
                 header = csvdata[0]
-                id_col_indices = {i for i, col in enumerate(header) if col.endswith("_id") or col == "parent_station"}
+                id_col_indices = {i for i, col in enumerate(header) if col.endswith("_id") or col == "parent_station" or col == "feed_publisher_name"}
                 data = csvdata[1:]
                 for row in data:
                     for i in id_col_indices:
