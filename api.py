@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
             logger.error(f"Error removing temporary directory {TMPDIR}: {str(e)}")
 
 
-app = FastAPI(title="Fahrplan Generator API", description="Generate transit timetables", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Fahrplan Generator API", description="Generate transit timetables", version="1.0.0", lifespan=lifespan, root_path="/api")
 
 
 class FahrplanRequest(BaseModel):
