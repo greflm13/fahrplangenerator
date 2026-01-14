@@ -93,7 +93,7 @@ def setup_logger(level=logging.INFO):
     Returns:
         logging.Logger: A configured logger instance that can be used to log messages.
     """
-    _logger = logging.getLogger(name="defaultlogger")
+    _logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
 
     supported_keys = [
         "asctime",
@@ -135,7 +135,7 @@ def setup_consolelogger(level=logging.INFO):
     Returns:
         logging.Logger: A configured logger instance that can be used to log messages.
     """
-    _logger = logging.getLogger(name="consolelogger")
+    _logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
 
     supported_keys = [
         "asctime",
@@ -165,8 +165,3 @@ def setup_consolelogger(level=logging.INFO):
     _logger.addHandler(logging.StreamHandler())
     _logger.setLevel(level=level)
     return _logger
-
-
-rotate_log_file(compress=True)
-logger = setup_logger()
-consolelogger = setup_consolelogger()

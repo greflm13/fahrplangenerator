@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import logging
 import argparse
 import tempfile
 from typing import Any
@@ -21,9 +22,15 @@ import modules.utils as utils
 import modules.db as db
 
 from modules.map import draw_map, MAP_PROVIDERS
-from modules.logger import logger
+from modules.logger import setup_logger, rotate_log_file
 from modules.datatypes import HierarchyStop, Routedata
 
+# Constants for file paths and exclusions
+if __package__ is None:
+    PACKAGE = ""
+else:
+    PACKAGE = __package__
+SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
 PIL.Image.MAX_IMAGE_PIXELS = 9331200000
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -45,7 +52,16 @@ custom_style = questionary.Style(
 )
 
 
-def addtimes(pdf: Canvas, daytimes: dict[str, list[Routedata]], day: str, posy: float, accent: colors.Color, dest: str, addstops: dict[str, int] = {"num": 1}):
+def addtimes(
+    pdf: Canvas,
+    daytimes: dict[str, list[Routedata]],
+    day: str,
+    posy: float,
+    accent: colors.Color,
+    dest: str,
+    addstops: dict[str, int] = {"num": 1},
+):
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     logger.info(f"Add {day}")
 
     pdg = pdf
@@ -122,6 +138,7 @@ def create_page(
     color: str,
     logo: tempfile._TemporaryFileWrapper | str | None = "</srgn>",
 ):
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     logger.info(f"Create page for {line} - {dest}")
     limit = 0
     times = 0
@@ -230,7 +247,14 @@ def create_page(
     return path
 
 
-def compute(ourstop: list[HierarchyStop], stops: dict[str, Any], args, destinations: dict[str, dict[str, str]], loadingbars: bool = True):
+def compute(
+    ourstop: list[HierarchyStop],
+    stops: dict[str, Any],
+    args,
+    destinations: dict[str, dict[str, str]],
+    loadingbars: bool = True,
+    logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
+):
     logger.info("computing our stops")
     ourstops = [stop.to_dict() for stop in ourstop]
     logger.info("computing our times")
@@ -442,6 +466,10 @@ def main():
         dest="map_provider",
     )
     args = parser.parse_args()
+
+    rotate_log_file(compress=True)
+    setup_logger()
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
 
     if args.reset_db:
         append = False

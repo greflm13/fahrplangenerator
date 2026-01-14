@@ -1,6 +1,7 @@
 import os
 import copy
 import random
+import logging
 
 from typing import Any, Dict, Iterable, List, Set, Tuple
 from collections import defaultdict
@@ -13,7 +14,6 @@ from geopy.geocoders import Photon
 from pypdf import PdfReader, PdfWriter
 from shapely.geometry import shape, Point
 
-from modules.logger import logger
 from modules.datatypes import HierarchyStop, Shape, Stop, Routedata
 from modules.db import update_location_cache, get_table_data, get_most_frequent_values, get_in_filtered_data_iter
 
@@ -29,6 +29,7 @@ geolocator = Photon(user_agent="fahrplan.py")
 
 def load_gtfs(folder: str, type: str) -> List[Dict]:
     """Load GTFS data."""
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     data: List[Dict] = []
     if os.path.isdir(folder):
         data_path = os.path.join(folder, type + ".txt")
@@ -67,6 +68,7 @@ def build_list_index(list: Iterable, index: str) -> Dict[str, Any]:
 
 def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
     """Index stop_times by trip_id for quick lookup."""
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     idx: Dict[str, List] = {}
     for st in get_in_filtered_data_iter("stop_times", column="trip_id", values=trip_ids):
         tid = getattr(st, "trip_id")
@@ -255,6 +257,7 @@ def get_place(coords: Tuple[float, float]):
 
 
 def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop], loadingbars=True) -> Dict[str, HierarchyStop]:
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     try:
         locationcache = get_table_data("location_cache")
         locationcache = {entry.stop_id: entry.name for entry in locationcache}

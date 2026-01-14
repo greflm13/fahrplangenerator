@@ -222,7 +222,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
 
         _, args.output = tempfile.mkstemp(suffix=".pdf", prefix=f"{safe_station}_", dir=TMPDIR)
 
-        compute(ourstop, stops, args, destinations, False)
+        compute(ourstop, stops, args, destinations, False, logger)
 
         if not os.path.exists(args.output):
             raise HTTPException(status_code=500, detail="Failed to generate PDF file")

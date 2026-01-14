@@ -1,5 +1,6 @@
 import os
 import math
+import logging
 import tempfile
 
 from typing import List, Dict, Optional
@@ -12,18 +13,18 @@ import matplotlib.patheffects as pe
 
 from matplotlib.axes import Axes
 from shapely.geometry import Point
-from reportlab.graphics import renderPDF
 from reportlab.pdfgen.canvas import Canvas
-from svglib.svglib import svg2rlg, Drawing
 from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
 from matplotlib.patches import FancyArrowPatch
 from xyzservices import TileProvider, providers
 
-from modules.utils import scale
-from modules.logger import logger
-from modules.datatypes import HierarchyStop
-
+# Constants for file paths and exclusions
+if __package__ is None:
+    PACKAGE = ""
+else:
+    PACKAGE = __package__
+SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
 MAP_PROVIDERS = {
     "BasemapAT": providers.BasemapAT.highdpi,
     "OPNVKarte": providers.OPNVKarte,
@@ -37,6 +38,7 @@ MAP_PROVIDERS = {
 
 
 def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = None, min_size: int = 3, max_size: int = 60) -> None:
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     try:
         for p in list(ax.patches):
             if getattr(p, "_is_direction_arrow", False):
@@ -156,6 +158,7 @@ def draw_map(
     tmpdir: str = tempfile.gettempdir(),
 ) -> str | None:
     """Draw map for selected routes."""
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     ax = None
 
     for route in routes["shapes"]:
@@ -290,6 +293,7 @@ def plot_stops_on_ax(
 
     Returns the number of plotted stops.
     """
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     try:
         rgb = mcolors.to_rgb(line_color)
         stop_rgb = tuple(max(0.0, c * 0.5) for c in rgb)
