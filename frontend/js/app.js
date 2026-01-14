@@ -40,6 +40,28 @@ async function fetchMapProviders() {
   });
 }
 
+async function handleFormSubmit(event) {
+  event.preventDefault();
+  if (!validateForm()) {
+    return;
+  }
+
+  const formData = new FormData(document.getElementById("schedule-form"));
+
+  const response = await fetch("/api/generate", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (response.ok) {
+    const data = await response.json();
+    window.location.href = `/download?dl=${data.download}`;
+  } else {
+    const error = await response.json();
+    alert("Error generating timetable: " + error.detail);
+  }
+}
+
 function validateForm() {
   const stationInput = document.getElementById("station_name");
   const stationName = stationInput.value;

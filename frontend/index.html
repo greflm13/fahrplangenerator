@@ -25,7 +25,7 @@
   <h1>Fahrplan Generator</h1>
   <p>Welcome to the Fahrplan Generator for public transport.</p>
   <form id="schedule-form" action="/api/generate" method="post" enctype="application/x-www-form-urlencoded"
-    class="form" onsubmit="return validateForm()">
+    class="form" onsubmit="handleFormSubmit(event)">
     <label for="station_name">Stop/Station:</label>
     <input type="text" list="station_datalist" id="station_name" name="station_name" required
       oninput="fetchStations(this.value)">

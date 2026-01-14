@@ -2,14 +2,15 @@
 
 import os
 import re
+import base64
 import logging
 import tempfile
 
 # import urllib.parse
 from typing import Annotated, Optional
 
-from fastapi import FastAPI, HTTPException, Form, Query
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Cookie, Form, Query
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -35,8 +36,6 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager to load GTFS data at startup."""
     global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS, TMPDIR
     try:
-        os.makedirs("./tmp", exist_ok=True)
-
         stops = db.get_table_data("stops")
         stop_hierarchy = utils.build_stop_hierarchy()
         stop_hierarchy = utils.query_stop_names(stop_hierarchy, loadingbars=False)
@@ -55,7 +54,7 @@ async def lifespan(app: FastAPI):
         STOP_ID_MAPPING = stop_id_mapping
         STOPS = stops
         DESTINATIONS = destinations
-        TMPDIR = tempfile.mkdtemp(dir="./tmp", prefix="fahrplan_api")
+        TMPDIR = tempfile.mkdtemp(prefix="fahrplan_api")
 
         logger.info("Loaded GTFS data")
         logger.info("Temporary directory created at %s", TMPDIR)
@@ -80,28 +79,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Fahrplan Generator API", description="Generate transit timetables", version="1.0.0", lifespan=lifespan, root_path="/api")
-
-
-class RawRequestLoggerMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # Capture the raw request headers and body
-        raw_headers = str(request.headers)
-        raw_body = (await request.body()).decode("utf-8")  # Decode to string for readability
-        raw_query_params = str(request.query_params)
-
-        raw_request = f"""
-        Method: {request.method}
-        URL: {str(request.url)}
-        Query Parameters: {raw_query_params}
-        Headers: {raw_headers}
-        Body: {raw_body}
-        """
-
-        print(f"Raw Request: {raw_request.strip()}")
-
-        # Process the request
-        response = await call_next(request)
-        return response
 
 
 class FahrplanRequest(BaseModel):
@@ -166,9 +143,6 @@ class Args:
         self.map_provider = map_provider
 
 
-app.add_middleware(RawRequestLoggerMiddleware)
-
-
 @app.get("/", response_model=RootResponse)
 async def root():
     """Health check endpoint"""
@@ -184,7 +158,33 @@ async def root():
     }
 
 
-@app.post("/generate", response_class=FileResponse)
+@app.get("/download", response_class=FileResponse)
+async def download_timetable(dl: str | None = None):
+    """Download a previously generated timetable PDF using a unique cookie."""
+    try:
+        if not dl:
+            raise HTTPException(status_code=400, detail="No download cookie provided")
+
+        file = dl.split(":")
+        filepath = base64.b64decode(file[0]).decode("utf-8")
+        filename = base64.b64decode(file[1]).decode("utf-8")
+        if not filepath:
+            raise HTTPException(status_code=400, detail="Invalid download cookie")
+
+        if not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="Requested timetable not found")
+
+        logger.info("Timetable downloaded: %s", filepath)
+        return FileResponse(path=filepath, filename=filename, media_type="application/pdf")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error downloading timetable: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Error downloading timetable: {str(e)}")
+
+
+@app.post("/generate")
 async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
     """Generate a transit timetable PDF for the given station."""
     try:
@@ -229,7 +229,10 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
             raise HTTPException(status_code=500, detail="Failed to generate PDF file")
 
         logger.info("Timetable generated: %s", args.output)
-        return FileResponse(path=args.output, filename=os.path.basename(outfile), media_type="application/pdf")
+        filepath = base64.b64encode(bytes(args.output, "utf-8"))
+        filename = base64.b64encode(bytes(os.path.basename(outfile), "utf-8"))
+        dl = filepath.decode("utf-8") + ":" + filename.decode("utf-8")
+        return JSONResponse(content={"message": "PDF generated", "download": dl})
 
     except HTTPException:
         raise
