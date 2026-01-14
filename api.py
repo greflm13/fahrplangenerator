@@ -86,6 +86,43 @@ class FahrplanRequest(BaseModel):
     map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution")
 
 
+class FahrplanResponse(BaseModel):
+    """Response model for timetable generation"""
+
+    pdf_file: bytes = Field(..., description="Generated PDF file content")
+
+
+class Root(BaseModel):
+    """Response model for root endpoint"""
+
+    status: str = Field(..., description="Status of the API")
+    message: str = Field(..., description="Message about the API")
+    endpoints: dict[str, str] = Field(..., description="Available API endpoints")
+
+
+class Stations(BaseModel):
+    """Response model for available stations"""
+
+    total: int = Field(..., description="Total number of stations")
+    stations: list[str] = Field(..., description="List of station names")
+
+
+class MapProviders(BaseModel):
+    """Response model for available map providers"""
+
+    map_providers: list[str] = Field(..., description="List of map providers")
+
+
+class Info(BaseModel):
+    """Response model for API information"""
+
+    api_version: str = Field(..., description="API version")
+    title: str = Field(..., description="API title")
+    description: str = Field(..., description="API description")
+    available_map_providers: list[str] = Field(..., description="List of available map providers")
+    endpoints: dict[str, str] = Field(..., description="Available API endpoints")
+
+
 class Args:
     """Simple class to mimic argparse Namespace"""
 
@@ -101,13 +138,22 @@ class Args:
         self.map_provider = map_provider
 
 
-@app.get("/")
+@app.get("/", response_model=Root)
 async def root():
     """Health check endpoint"""
-    return {"status": "running", "message": "Fahrplan Generator API", "endpoints": {"POST /generate": "Generate a timetable", "GET /stations": "Get available stations"}}
+    return {
+        "status": "running",
+        "message": "Fahrplan Generator API",
+        "endpoints": {
+            "POST /generate": "Generate a timetable",
+            "GET /stations": "Get available stations",
+            "GET /map-providers": "Get available map providers",
+            "GET /info": "Get API information",
+        },
+    }
 
 
-@app.post("/generate")
+@app.post("/generate", response_model=FahrplanResponse)
 async def generate_timetable(request: Annotated[FahrplanRequest, Query()]):
     """Generate a transit timetable PDF for the given station."""
     try:
@@ -157,7 +203,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Query()]):
         raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}")
 
 
-@app.get("/stations")
+@app.get("/stations", response_model=Stations)
 async def get_available_stations():
     """
     Get a list of all available stations in the database.
@@ -176,13 +222,13 @@ async def get_available_stations():
         raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}")
 
 
-@app.get("/map-providers")
+@app.get("/map-providers", response_model=MapProviders)
 async def get_map_providers():
     """Get a list of available map providers."""
     return {"map_providers": list(MAP_PROVIDERS.keys())}
 
 
-@app.get("/info")
+@app.get("/info", response_model=Info)
 async def get_info():
     """Get API information and available options"""
     return {
@@ -190,7 +236,13 @@ async def get_info():
         "title": "Fahrplan Generator API",
         "description": "Generate transit timetables with optional maps",
         "available_map_providers": ["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM", "OTM", "UN", "SAT"],
-        "endpoints": {"GET /": "Health check", "POST /generate": "Generate a timetable", "GET /stations": "Get available stations", "GET /info": "Get API information"},
+        "endpoints": {
+            "GET /": "Health check",
+            "POST /generate": "Generate a timetable",
+            "GET /stations": "Get available stations",
+            "GET /map-providers": "Get available map providers",
+            "GET /info": "Get API information",
+        },
     }
 
 
