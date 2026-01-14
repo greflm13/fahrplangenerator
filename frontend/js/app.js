@@ -34,6 +34,22 @@ async function fetchMapProviders() {
   });
 }
 
+async function validateForm() {
+  const stationInput = document.getElementById("station_name");
+  const stationName = stationInput.value;
+  if (stationName.length < 3) {
+    alert("Please enter at least 3 characters for the station name.");
+    return false;
+  }
+  const response = await fetch(`/api/stations?query=${encodeURIComponent(stationName)}`);
+  const stations = await response.json();
+  if (!stations.stations.includes(stationName)) {
+    alert("Please select a valid station from the suggestions.");
+    return false;
+  }
+  return true;
+}
+
 document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
 
 window.onload = function () {
