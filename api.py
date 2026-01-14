@@ -9,12 +9,10 @@ import tempfile
 # import urllib.parse
 from typing import Annotated, Optional
 
-from fastapi import FastAPI, HTTPException, Cookie, Form, Query
+from fastapi import FastAPI, HTTPException, Form, Query
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 
 import modules.utils as utils
 import modules.db as db
@@ -159,17 +157,17 @@ async def root():
 
 
 @app.get("/download", response_class=FileResponse)
-async def download_timetable(dl: str | None = None):
-    """Download a previously generated timetable PDF using a unique cookie."""
+async def download_timetable(dl: str):
+    """Download a previously generated timetable PDF using a unique token."""
     try:
         if not dl:
-            raise HTTPException(status_code=400, detail="No download cookie provided")
+            raise HTTPException(status_code=400, detail="No download token provided")
 
         file = dl.split(":")
         filepath = base64.b64decode(file[0]).decode("utf-8")
         filename = base64.b64decode(file[1]).decode("utf-8")
         if not filepath:
-            raise HTTPException(status_code=400, detail="Invalid download cookie")
+            raise HTTPException(status_code=400, detail="Invalid download token")
 
         if not os.path.exists(filepath):
             raise HTTPException(status_code=404, detail="Requested timetable not found")
