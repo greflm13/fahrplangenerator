@@ -4,9 +4,9 @@ import os
 import re
 import logging
 import tempfile
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
@@ -108,7 +108,7 @@ async def root():
 
 
 @app.post("/generate")
-async def generate_timetable(request: FahrplanRequest):
+async def generate_timetable(request: Annotated[FahrplanRequest, Query()]):
     """Generate a transit timetable PDF for the given station."""
     try:
         args = Args(generate_map=request.generate_map, color=request.color, map_provider=request.map_provider, map_dpi=request.map_dpi)

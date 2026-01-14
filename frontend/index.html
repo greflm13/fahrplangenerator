@@ -26,7 +26,7 @@
   <!-- Add your site or application content here -->
   <h1>Fahrplan Generator</h1>
   <p>Welcome to the Fahrplan Generator for public transport.</p>
-  <form id="schedule-form" action="/api/generate" method="post" enctype="multipart/form-data" class="form">
+  <form id="schedule-form" action="/api/generate" method="post" enctype="application/x-www-form-urlencoded" class="form">
     <label for="station">Stop/Station:</label>
     <select id="station" name="station_name">
       <!-- Options will be populated by JavaScript -->
