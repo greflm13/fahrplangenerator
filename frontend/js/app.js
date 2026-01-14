@@ -31,6 +31,21 @@ async function fetchMapProviders() {
   });
 }
 
+async function fetchSuggestions(query) {
+  if (query.length < 3) {
+    return;
+  }
+  const response = await fetch(`/api/stations?query=${encodeURIComponent(query)}`);
+  const stations = await response.json();
+  const dataList = document.getElementById("station_datalist");
+  dataList.innerHTML = "";
+  stations.stations.forEach((station) => {
+    const option = document.createElement("option");
+    option.value = station;
+    dataList.appendChild(option);
+  });
+}
+
 document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
 
 window.onload = function () {
