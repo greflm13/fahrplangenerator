@@ -143,7 +143,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
 
 def draw_map(
     page: str,
-    stop: HierarchyStop,
+    stop_name: str,
     logo,
     routes: Dict,
     color: str,
@@ -265,7 +265,7 @@ def draw_map(
 
         pdf.setFont("foot", 17)
         pdf.setFillColor(colors.black)
-        pdf.drawString(x=80, y=23.5, text=stop.stop_name)
+        pdf.drawString(x=80, y=23.5, text=stop_name)
         pdf.save()
         os.remove(b)
         logger.info("Saved map to %s", page)

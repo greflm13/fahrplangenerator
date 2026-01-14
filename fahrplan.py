@@ -114,7 +114,7 @@ def addtimes(pdf: Canvas, daytimes: dict[str, list[Routedata]], day: str, posy: 
 def create_page(
     line: str,
     dest: str,
-    stop: HierarchyStop,
+    stop_name: str,
     path: str,
     montimes: dict[str, list[Routedata]],
     sattimes: dict[str, list[Routedata]],
@@ -223,19 +223,16 @@ def create_page(
 
     pdf.setFont("foot", 17)
     pdf.setFillColor(colors.black)
-    pdf.drawString(x=80, y=23.5, text=stop.stop_name)
+    pdf.drawString(x=80, y=23.5, text=stop_name)
 
     pdf.save()
     logger.info("Done.")
     return path
 
 
-def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: dict[str, dict[str, str]], loadingbars: bool = True):
+def compute(ourstop: list[HierarchyStop], stops: dict[str, Any], args, destinations: dict[str, dict[str, str]], loadingbars: bool = True):
     logger.info("computing our stops")
-    ourstops = [ourstop.to_dict()]
-    if ourstop.children is not None:
-        ourstops.extend(ourstops[0]["children"])
-        del ourstops[0]["children"]
+    ourstops = [stop.to_dict() for stop in ourstop]
     logger.info("computing our times")
     stopids = [stop["stop_id"] for stop in ourstops]
     ourtimes = db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
@@ -274,7 +271,7 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
             time=selected_stop_times[trip.trip_id].departure_time[:-3],
             line=trip.route_id,
             dire=f"d{trip.direction_id}",
-            stop=ourstop.stop_name,
+            stop=ourstop[0].stop_name,
         )
         if calendar[trip.service_id].monday == "1":
             monset.add(data)
@@ -290,7 +287,7 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
     mondict: dict[str, dict[str, dict[str, list[Routedata]]]] = {}
     satdict: dict[str, dict[str, dict[str, list[Routedata]]]] = {}
     sundict: dict[str, dict[str, dict[str, list[Routedata]]]] = {}
-    
+
     if loadingbars:
         mon_iterator = tqdm.tqdm(mon, desc="Indexing trips", unit=" trips", ascii=True, dynamic_ncols=True)
     else:
@@ -369,14 +366,14 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
                 pages[line] = {}
             for k in dires.keys():
                 dest = destinations[line][k]
-                if dest != ourstop.stop_name:
+                if dest != ourstop[0].stop_name:
                     page = pages.get(line, {}).get(k, {})
                     if not isinstance(page, str):
                         page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
                     pages[line][k] = create_page(
                         selected_routes[line].route_short_name,
                         dest,
-                        ourstop,
+                        ourstop[0].stop_name,
                         page,
                         mondict.get(line, {}).get(k, {}),
                         satdict.get(line, {}).get(k, {}),
@@ -388,7 +385,7 @@ def compute(ourstop: HierarchyStop, stops: dict[str, Any], args, destinations: d
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
                         pages[line][k + "map"] = draw_map(
                             page=mappage,
-                            stop=ourstop,
+                            stop_name=ourstop[0].stop_name,
                             logo=tmpfile,
                             routes=utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, [stop["stop_id"] for stop in ourstops]),
                             color=color,
@@ -487,17 +484,15 @@ def main():
         if choice is None:
             print()
             break
-        ourstop: HierarchyStop
         if len(stop_id_mapping[choice]) == 1:
-            ourstop = stop_hierarchy[stop_id_mapping[choice][0]]
+            ourstop = [stop_hierarchy[stop_id_mapping[choice][0]]]
         else:
-            combined_children = []
+            ourstop = []
             for stop_id in stop_id_mapping[choice]:
                 stop = stop_hierarchy[stop_id]
                 if stop.children is not None:
-                    combined_children.extend(stop.children)
-            ourstop = stop_hierarchy[stop_id_mapping[choice][0]]
-            ourstop.children = combined_children
+                    ourstop.extend(stop.children)
+                ourstop.append(stop)
 
         compute(ourstop, stops, args, destinations)
 
