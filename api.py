@@ -86,12 +86,6 @@ class FahrplanRequest(BaseModel):
     map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution")
 
 
-class FahrplanResponse(BaseModel):
-    """Response model for timetable generation"""
-
-    pdf_file: bytes = Field(..., description="Generated PDF file content")
-
-
 class Root(BaseModel):
     """Response model for root endpoint"""
 
@@ -153,7 +147,7 @@ async def root():
     }
 
 
-@app.post("/generate", response_model=FahrplanResponse)
+@app.post("/generate", response_model=bytes)
 async def generate_timetable(request: Annotated[FahrplanRequest, Query()]):
     """Generate a transit timetable PDF for the given station."""
     try:
