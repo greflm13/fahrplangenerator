@@ -405,7 +405,6 @@ def compute(
                         sundict.get(line, {}).get(k, {}),
                         color,
                         tmpfile,
-                        logger=logger,
                     )
                     if args.map:
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
@@ -419,7 +418,6 @@ def compute(
                             tmpdir=tmpdir,
                             map_provider=args.map_provider,
                             dpi=args.map_dpi,
-                            logger=logger,
                         )
 
         pagelst: list[str] = []

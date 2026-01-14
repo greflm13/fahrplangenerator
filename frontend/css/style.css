@@ -107,9 +107,11 @@ textarea {
   padding: 0.5em;
   box-sizing: border-box;
 }
+
 .form input[type="checkbox"] {
   margin-right: 0.5em;
 }
+
 .form input[type="color"] {
   padding: 0;
   border: none;
@@ -117,8 +119,28 @@ textarea {
   height: 2em;
   vertical-align: middle;
 }
+
 .form input[type="radio"] {
   margin-right: 0.3em;
+}
+
+.form #map-options {
+  display: none;
+}
+
+.form-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.loader-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
 }
 
 .loader,
@@ -135,9 +157,10 @@ textarea {
   color: green;
   font-size: 7px;
   position: relative;
-  text-indent: -9999em;
   transform: translateZ(0);
   animation-delay: -0.16s;
+  /* margin-left: 50%; */
+  /* margin-top: 10%; */
 }
 
 .loader:before,
@@ -255,7 +278,10 @@ textarea {
   /* Style adjustments for viewports that meet the condition */
 }
 
-@media print, (-webkit-min-device-pixel-ratio: 1.25), (min-resolution: 1.25dppx), (min-resolution: 120dpi) {
+@media print,
+  (-webkit-min-device-pixel-ratio: 1.25),
+  (min-resolution: 1.25dppx),
+  (min-resolution: 120dpi) {
   /* Style adjustments for high resolution devices */
 }
 

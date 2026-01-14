@@ -20,7 +20,9 @@ async function fetchStations(query = "") {
     if (query.length < 3) {
       return;
     }
-    const response = await fetch(`/api/stations?query=${encodeURIComponent(query)}`);
+    const response = await fetch(
+      `/api/stations?query=${encodeURIComponent(query)}`
+    );
     const stations = await response.json();
     stations.stations.forEach((station) => {
       const option = document.createElement("option");
@@ -51,7 +53,9 @@ async function handleFormSubmit(event) {
   const formData = new FormData(document.getElementById("schedule-form"));
   // disable form after submit to prevent api spam
   const submitButton = document.getElementById("submit");
+  const loader = document.getElementById("loader");
   submitButton.disabled = true;
+  loader.style.display = "flex";
 
   const response = await fetch("/api/generate", {
     method: "POST",
@@ -59,6 +63,7 @@ async function handleFormSubmit(event) {
   });
 
   submitButton.disabled = false;
+  loader.style.display = "none";
 
   if (response.ok) {
     const data = await response.json();
@@ -81,7 +86,9 @@ function validateForm() {
   }
 }
 
-document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
+document
+  .getElementById("generate-map")
+  .addEventListener("change", toggleMapOptions);
 
 window.onload = function () {
   toggleMapOptions();

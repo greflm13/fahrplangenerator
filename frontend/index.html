@@ -1,5 +1,5 @@
 <!doctype html>
-<html class="no-js" lang="">
+<html class="no-js" lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -24,41 +24,45 @@
 <body>
   <h1>Fahrplan Generator</h1>
   <p>Welcome to the Fahrplan Generator for public transport.</p>
-  <form id="schedule-form" action="/api/generate" method="post" enctype="application/x-www-form-urlencoded" class="form"
-    onsubmit="handleFormSubmit(event)" autocomplete="off">
-    <label for="station_name">Stop/Station:</label>
-    <input type="text" list="station_datalist" id="station_name" name="station_name" required
-      oninput="fetchStations(this.value)">
-    <datalist id="station_datalist">
-      <!-- Suggestions will be populated by JavaScript -->
-    </datalist>
-    <br><br>
-    <label for="color">Color:</label>
-    <div id="color-options">
-      <input type="radio" id="random" name="color" value="random" checked>
-      <label for="random">Random</label>
-      <input type="radio" id="custom" name="color" value="custom">
-      <label for="custom">Custom:</label>
-      <input type="color" id="color" name="color" value="random">
+  <div class="form-wrapper">
+    <form id="schedule-form" action="/api/generate" method="post" enctype="application/x-www-form-urlencoded"
+      class="form" onsubmit="handleFormSubmit(event)" autocomplete="off">
+      <label for="station_name">Stop/Station:</label>
+      <input type="text" list="station_datalist" id="station_name" name="station_name" required
+        oninput="fetchStations(this.value)">
+      <datalist id="station_datalist">
+        <!-- Suggestions will be populated by JavaScript -->
+      </datalist>
+      <br><br>
+      <label for="color">Color:</label>
+      <div id="color-options">
+        <input type="radio" id="random" name="color" value="random" checked>
+        <label for="random">Random</label>
+        <input type="radio" id="custom" name="color" value="custom">
+        <label for="custom">Custom:</label>
+        <input type="color" id="color" name="color" value="random">
+      </div>
+      <br><br>
+      <label for="generate-map">Generate map (will take a long time!):</label>
+      <input type="checkbox" id="generate-map" name="generate_map" onchange="toggleMapOptions();">
+      <!-- only show this section if generate-map checkbox is checked -->
+      <fieldset id="map-options">
+        <br><br>
+        <label for="map_provider">Map Provider:</label>
+        <select id="map_provider" name="map_provider">
+          <!-- Options will be populated by JavaScript -->
+        </select>
+        <br><br>
+        <label for="map_dpi">DPI:</label>
+        <input type="number" id="map_dpi" name="map_dpi" value="300" min="150" max="1200">
+      </fieldset>
+      <br><br>
+      <button type="submit" id="submit">Generate Schedule</button>
+    </form>
+    <div class="loader-overlay" id="loader">
+      <div class="loader"></div>
     </div>
-    <br><br>
-    <label for="generate-map">Generate map (will take a long time!):</label>
-    <input type="checkbox" id="generate-map" name="generate_map" onchange="toggleMapOptions();">
-    <!-- only show this section if generate-map checkbox is checked -->
-    <fieldset id="map-options" style="display:none;">
-      <br><br>
-      <label for="map_provider">Map Provider:</label>
-      <select id="map_provider" name="map_provider">
-        <!-- Options will be populated by JavaScript -->
-      </select>
-      <br><br>
-      <label for="map_dpi">DPI:</label>
-      <input type="number" id="map_dpi" name="map_dpi" value="300" min="150" max="1200">
-    </fieldset>
-    <br><br>
-    <button type="submit" id="submit">Generate Schedule</button>
-  </form>
-  <div class="loader" id="loader" style="display: none;"></div>
+  </div>
   <script src="js/app.js"></script>
 
 </body>
