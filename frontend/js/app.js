@@ -7,15 +7,17 @@ function toggleMapOptions() {
   }
 }
 
-async function fetchStations() {
-  const response = await fetch("/api/stations");
+async function fetchStations(query = "") {
+  if (query.length < 3) {
+    return;
+  }
+  const response = await fetch(`/api/stations?query=${encodeURIComponent(query)}`);
   const stations = await response.json();
-  const stationSelect = document.getElementById("station_name");
+  const dataList = document.getElementById("station_datalist");
   stations.stations.forEach((station) => {
     const option = document.createElement("option");
     option.value = station;
-    option.text = station;
-    stationSelect.add(option);
+    dataList.appendChild(option);
   });
 }
 
@@ -28,21 +30,6 @@ async function fetchMapProviders() {
     option.value = provider;
     option.text = provider;
     providerSelect.add(option);
-  });
-}
-
-async function fetchSuggestions(query) {
-  if (query.length < 3) {
-    return;
-  }
-  const response = await fetch(`/api/stations?query=${encodeURIComponent(query)}`);
-  const stations = await response.json();
-  const dataList = document.getElementById("station_datalist");
-  dataList.innerHTML = "";
-  stations.stations.forEach((station) => {
-    const option = document.createElement("option");
-    option.value = station;
-    dataList.appendChild(option);
   });
 }
 
