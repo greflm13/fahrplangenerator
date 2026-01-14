@@ -37,23 +37,16 @@ async function fetchMapProviders() {
 function validateForm() {
   const stationInput = document.getElementById("station_name");
   const stationName = stationInput.value;
-  if (stationName.length < 3) {
-    alert("Please enter at least 3 characters for the station name.");
+  const stations = fetch("/api/stations")
+    .then((response) => response.json())
+    .then((data) => data.stations);
+
+  if (!stations.includes(stationName)) {
+    alert("Please enter a valid station.");
     return false;
+  } else {
+    return true;
   }
-  const options = document.getElementById("station_datalist").options;
-  let valid = false;
-  for (let i = 0; i < options.length; i++) {
-    if (options[i].value === stationName) {
-      valid = true;
-      break;
-    }
-  }
-  if (!valid) {
-    alert("Please select a valid station from the suggestions.");
-    return false;
-  }
-  return true;
 }
 
 document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
