@@ -10,7 +10,7 @@ function toggleMapOptions() {
 async function fetchStations() {
   const response = await fetch("/api/stations");
   const stations = await response.json();
-  const stationSelect = document.getElementById("station-select");
+  const stationSelect = document.getElementById("station");
   stations.stations.forEach((station) => {
     const option = document.createElement("option");
     option.value = station;
@@ -22,7 +22,7 @@ async function fetchStations() {
 async function fetchMapProviders() {
   const response = await fetch("/api/map-providers");
   const providers = await response.json();
-  const providerSelect = document.getElementById("map-provider-select");
+  const providerSelect = document.getElementById("map-provider");
   providers.map_providers.forEach((provider) => {
     const option = document.createElement("option");
     option.value = provider;
