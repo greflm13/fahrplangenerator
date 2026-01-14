@@ -147,7 +147,7 @@ async def root():
     }
 
 
-@app.post("/generate", response_model=FileResponse)
+@app.post("/generate", response_class=FileResponse)
 async def generate_timetable(request: Annotated[FahrplanRequest, Query()]):
     """Generate a transit timetable PDF for the given station."""
     try:
