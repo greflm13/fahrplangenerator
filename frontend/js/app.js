@@ -8,18 +8,24 @@ function toggleMapOptions() {
 }
 
 async function fetchStations(query = "") {
-  const dataList = document.getElementById("station_datalist");
-  dataList.innerHTML = ""; // Clear existing options
-  if (query.length < 3) {
-    return;
+  if (query === "") {
+    const response = await fetch("/api/stations");
+    const stations = await response.json();
+    window.stations = stations.stations;
+  } else {
+    const dataList = document.getElementById("station_datalist");
+    dataList.innerHTML = ""; // Clear existing options
+    if (query.length < 3) {
+      return;
+    }
+    const response = await fetch(`/api/stations?query=${encodeURIComponent(query)}`);
+    const stations = await response.json();
+    stations.stations.forEach((station) => {
+      const option = document.createElement("option");
+      option.value = station;
+      dataList.appendChild(option);
+    });
   }
-  const response = await fetch(`/api/stations?query=${encodeURIComponent(query)}`);
-  const stations = await response.json();
-  stations.stations.forEach((station) => {
-    const option = document.createElement("option");
-    option.value = station;
-    dataList.appendChild(option);
-  });
 }
 
 async function fetchMapProviders() {
@@ -37,11 +43,8 @@ async function fetchMapProviders() {
 function validateForm() {
   const stationInput = document.getElementById("station_name");
   const stationName = stationInput.value;
-  const stations = fetch("/api/stations")
-    .then((response) => response.json())
-    .then((data) => data.stations);
 
-  if (!stations.includes(stationName)) {
+  if (!window.stations.includes(stationName)) {
     alert("Please enter a valid station.");
     return false;
   } else {
