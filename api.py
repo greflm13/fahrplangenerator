@@ -4,6 +4,7 @@ import os
 import re
 import logging
 import tempfile
+
 # import urllib.parse
 from typing import Annotated, Optional
 
@@ -82,7 +83,7 @@ class FahrplanRequest(BaseModel):
 
     station_name: str = Field(..., description="Name of the station/stop")
     generate_map: bool = Field(default=False, description="Generate maps for routes")
-    color: str = Field(default="random", description="Timetable color (or 'random')")
+    color: list = Field(default=["random"], description="Timetable color (or 'random')")
     map_provider: str = Field(default="BasemapAT", description="Map provider (BasemapAT, OPNVKarte, OSM, OSMDE, ORM, OTM, UN, SAT)")
     map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution")
 
@@ -152,7 +153,9 @@ async def root():
 async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
     """Generate a transit timetable PDF for the given station."""
     try:
-        args = Args(generate_map=request.generate_map, color=request.color, map_provider=request.map_provider, map_dpi=request.map_dpi)
+        if request.color[0] != "random":
+            request.color[0] = request.color[1]
+        args = Args(generate_map=request.generate_map, color=request.color[0], map_provider=request.map_provider, map_dpi=request.map_dpi)
 
         global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS
         if STOPS is None or STOP_HIERARCHY is None or DESTINATIONS is None or STOP_ID_MAPPING is None:
@@ -162,8 +165,6 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         stop_hierarchy = STOP_HIERARCHY
         destinations = DESTINATIONS
         stop_id_mapping = STOP_ID_MAPPING
-
-        # request.station_name = urllib.parse.unquote_plus(request.station_name).strip()
 
         if request.station_name not in stop_id_mapping:
             raise HTTPException(status_code=400, detail=f"Station '{request.station_name}' not found")
