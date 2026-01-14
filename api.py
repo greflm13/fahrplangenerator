@@ -4,6 +4,7 @@ import os
 import re
 import logging
 import tempfile
+import urllib.parse
 from typing import Annotated, Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -161,6 +162,8 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Query()]):
         stop_hierarchy = STOP_HIERARCHY
         destinations = DESTINATIONS
         stop_id_mapping = STOP_ID_MAPPING
+
+        request.station_name = urllib.parse.unquote_plus(request.station_name).strip()
 
         if request.station_name not in stop_id_mapping:
             raise HTTPException(status_code=400, detail=f"Station '{request.station_name}' not found")
