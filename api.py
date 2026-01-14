@@ -4,10 +4,10 @@ import os
 import re
 import logging
 import tempfile
-import urllib.parse
+# import urllib.parse
 from typing import Annotated, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
@@ -149,7 +149,7 @@ async def root():
 
 
 @app.post("/generate", response_class=FileResponse)
-async def generate_timetable(request: Annotated[FahrplanRequest, Query()]):
+async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
     """Generate a transit timetable PDF for the given station."""
     try:
         args = Args(generate_map=request.generate_map, color=request.color, map_provider=request.map_provider, map_dpi=request.map_dpi)
@@ -163,7 +163,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Query()]):
         destinations = DESTINATIONS
         stop_id_mapping = STOP_ID_MAPPING
 
-        request.station_name = urllib.parse.unquote_plus(request.station_name).strip()
+        # request.station_name = urllib.parse.unquote_plus(request.station_name).strip()
 
         if request.station_name not in stop_id_mapping:
             raise HTTPException(status_code=400, detail=f"Station '{request.station_name}' not found")
