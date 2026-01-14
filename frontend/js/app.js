@@ -55,7 +55,7 @@ async function handleFormSubmit(event) {
 
   if (response.ok) {
     const data = await response.json();
-    window.location.href = `/download?dl=${data.download}`;
+    window.location.href = `/api/download?dl=${data.download}`;
   } else {
     const error = await response.json();
     alert("Error generating timetable: " + error.detail);
