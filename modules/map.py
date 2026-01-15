@@ -6,7 +6,6 @@ import tempfile
 from typing import List, Dict, Optional
 
 import geopandas as gpd
-import contextily as cx
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
@@ -19,12 +18,15 @@ from reportlab.lib.utils import ImageReader
 from matplotlib.patches import FancyArrowPatch
 from xyzservices import TileProvider, providers
 
+from modules.xyz_basemap import render_basemap
+
 # Constants for file paths and exclusions
 if __package__ is None:
     PACKAGE = ""
 else:
     PACKAGE = __package__
 SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
+
 MAP_PROVIDERS = {
     "BasemapAT": providers.BasemapAT.highdpi,
     "OPNVKarte": providers.OPNVKarte,
@@ -233,12 +235,12 @@ def draw_map(
     ax.set(xlim=(xmin - xpadding, xmax + xpadding), ylim=(ymin - ypadding, ymax + ypadding))
     logger.debug("Final axis limits: x=(%.6f, %.6f), y=(%.6f, %.6f)", xmin - xpadding, xmax + xpadding, ymin - ypadding, ymax + ypadding)
 
-    zoom_param = zoom if zoom >= 0 else "auto"
+    zoom_param = zoom if zoom >= 0 else None
     done = False
     while not done:
         try:
             logger.debug("Adding basemap with zoom=%s and provider=%s", zoom_param, map_provider)
-            cx.add_basemap(ax=ax, crs="EPSG:4326", source=get_provider_source(map_provider), zoom=str(zoom_param), reset_extent=True)
+            render_basemap(ax=ax, zoom=zoom_param, provider=get_provider_source(map_provider), cache_dir=os.path.join(SCRIPTDIR, "__pycache__"))
             done = True
         except Exception as exc:
             logger.warning("Failed to add basemap: %s", exc)
