@@ -66,11 +66,12 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
             return (pA[0] + (pB[0] - pA[0]) * t, pA[1] + (pB[1] - pA[1]) * t)
 
         def _add_arrows_from_points(points, color):
-            seg_lens = []
-            cum = [0.0]
+            if len(points) < 2:
+                return
             xs = [p[0] for p in points]
             ys = [p[1] for p in points]
-            zs = [p[2] for p in points]
+            seg_lens = []
+            cum = [0.0]
             for i in range(len(points) - 1):
                 dx = xs[i + 1] - xs[i]
                 dy = ys[i + 1] - ys[i]
@@ -78,27 +79,34 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
                 seg_lens.append(d)
                 cum.append(cum[-1] + d)
             total = cum[-1]
-            if total <= 0 or len(points) < 2:
+            if total <= 0:
                 return
 
-            def z_at(seg_idx, t):
-                return zs[seg_idx] + t * (zs[seg_idx + 1] - zs[seg_idx])
-
             xmin, xmax, ymin, ymax = ax.axis()
-            map_extends = max(xmax - xmin, ymax - ymin)
-            line_extends = max(zs) - min(zs)
+            p0 = ax.transData.transform((xmin, ymin))
+            p1 = ax.transData.transform((xmax, ymax))
+            map_diag_px = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
 
-            n_arrows = int(line_extends / map_extends * 0.0001)
+            n_arrows = max(3, int(map_diag_px / 150))
 
             for k in range(1, n_arrows + 1):
                 target = total * k / (n_arrows + 1)
                 seg_idx = 0
                 while seg_idx < len(seg_lens) and cum[seg_idx + 1] < target:
                     seg_idx += 1
+                if seg_idx >= len(seg_lens):
+                    continue
                 seg_start = (xs[seg_idx], ys[seg_idx])
                 seg_end = (xs[seg_idx + 1], ys[seg_idx + 1])
                 seg_len = seg_lens[seg_idx]
                 if seg_len <= 0:
+                    continue
+                pa0 = (xs[seg_idx], ys[seg_idx])
+                pb0 = (xs[seg_idx + 1], ys[seg_idx + 1])
+                spa = ax.transData.transform(pa0)
+                spb = ax.transData.transform(pb0)
+                seg_len_px = math.hypot(spb[0] - spa[0], spb[1] - spa[1])
+                if seg_len_px < 5:
                     continue
                 local_target = target - cum[seg_idx]
                 t = local_target / seg_len
@@ -107,14 +115,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
                 t1 = min(1.0, t + delta / 2.0)
                 pa = _interp(seg_start, seg_end, t0)
                 pb = _interp(seg_start, seg_end, t1)
-                z_pa = z_at(seg_idx, t0)
-                z_pb = z_at(seg_idx, t1)
-                if z_pb >= z_pa:
-                    tip = pb
-                    other = pa
-                else:
-                    tip = pa
-                    other = pb
+                tip, other = pb, pa
 
                 try:
                     arrow = FancyArrowPatch(
@@ -124,13 +125,13 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
                         mutation_scale=mutation_scale,
                         linewidth=0,
                         color=color,
-                        zorder=4,
+                        zorder=5,
                         transform=ax.transData,
                     )
                     setattr(arrow, "_is_direction_arrow", True)
                     ax.add_patch(arrow)
-                except Exception:
-                    continue
+                except Exception as exc:
+                    logger.debug("Arrow failed: %s", exc)
 
         for shp in shapes:
             geom = shp.get("geometry") if isinstance(shp, dict) else shp
@@ -139,8 +140,12 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
             except Exception:
                 parts = []
             for part in parts:
-                coords = list(part.coords)  # type: ignore
-                _add_arrows_from_points(coords, arrow_color or (0, 0, 0))
+                try:
+                    coords = list(part.coords)  # type: ignore
+                    _add_arrows_from_points(coords, arrow_color or (0, 0, 0))
+                except Exception as exc:
+                    logger.debug("Arrow failed on geometry: %s", exc)
+
     except Exception as exc:
         logger.debug("Failed to add direction arrows: %s", exc)
 
@@ -177,12 +182,6 @@ async def draw_map(
     if ax is None:
         logger.info("No routes to plot on map")
         return None
-
-    stop_rows = [row[1]._asdict() for row in routes["points"]]
-    stop_points = [row[0] for row in routes["points"]]
-
-    gdf_stops = gpd.GeoDataFrame(stop_rows, geometry=stop_points, crs="EPSG:4326").to_crs("EPSG:3857")
-    gdf_stops.plot(ax=ax, color="black", markersize=30, zorder=5)
 
     bounds = [g.bounds for g in projected_geoms]
     xmin = min(b[0] for b in bounds)
@@ -228,27 +227,20 @@ async def draw_map(
     ax.set_axis_off()
 
     try:
-        n = plot_stops_on_ax(
-            ax,
-            routes["points"],
-            line_color=color,
-            endstops=routes["endstops"],
-            label_fontsize=label_fontsize,
-            label_rotation=label_rotation,
-        )
+        add_direction_arrows(ax, projected_geoms, arrow_color=color)
+        logger.info("Plotted arrows on route")
+    except Exception as exc:
+        logger.warning("Exception while plotting arrows: %s", exc)
+
+    try:
+        n = plot_stops_on_ax(ax, routes["points"], line_color=color, endstops=routes["endstops"], label_fontsize=label_fontsize, label_rotation=label_rotation)
         logger.info("Plotted %d stops for route", n)
     except Exception as exc:
         logger.warning("Exception while plotting stops: %s", exc)
 
     zoom_param = zoom if zoom >= 0 else None
     try:
-        await render_basemap(
-            ax=ax,
-            extends=(xmin, xmax, ymin, ymax),
-            zoom=zoom_param,
-            provider=get_provider_source(map_provider),
-            cache_dir=os.path.join(SCRIPTDIR, "__pycache__"),
-        )
+        await render_basemap(ax=ax, extends=(xmin, xmax, ymin, ymax), zoom=zoom_param, provider=get_provider_source(map_provider), cache_dir=os.path.join(SCRIPTDIR, "__pycache__"))
     except Exception as exc:
         logger.warning("Failed to add basemap: %s", exc)
 
@@ -364,7 +356,7 @@ def plot_stops_on_ax(
                 weight=fontweight,
                 ha="left",
                 va="center",
-                zorder=6,
+                zorder=10,
                 rotation=label_rotation,
                 rotation_mode="anchor",
                 bbox={"boxstyle": "round,pad=0.1", "facecolor": "white", "edgecolor": "black", "linewidth": 0.2, "alpha": 2 / 3},
