@@ -142,12 +142,10 @@ async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, 
 
 
 async def fetch_tile_with_retry(provider: TileProvider, z: int, x: int, y: int, *, timeout: float = 5.0, retries: int = 3, backoff: float = 0.5) -> Image.Image:
-    last_err = None
     for attempt in range(1, retries + 1):
         try:
             return await fetch_tile(provider, z, x, y, timeout=timeout)
-        except Exception as e:
-            last_err = e
+        except Exception:
             if attempt < retries:
                 await asyncio.sleep(backoff * (2 ** (attempt - 1)))
 

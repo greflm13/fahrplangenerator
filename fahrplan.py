@@ -415,7 +415,7 @@ async def compute(
                             logo=tmpfile,
                             routes=await utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, [stop["stop_id"] for stop in ourstops]),
                             color=color,
-                            label_rotation=15,
+                            label_rotation=0,
                             tmpdir=tmpdir,
                             map_provider=args.map_provider,
                             dpi=args.map_dpi,
@@ -502,7 +502,7 @@ async def main():
             stop_id_mapping[stop.stop_name].append(stop.stop_id)
     stops = utils.build_list_index(stops, "stop_id")
 
-    logger.info("loaded data")
+    logger.info("Loaded data")
 
     choices = sorted(stop_id_mapping.keys())
     while True:

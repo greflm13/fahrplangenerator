@@ -1,3 +1,4 @@
+adjustText~=1.3.0
 aiohttp~=3.13.3
 aiosqlite~=0.22.1
 fastapi~=0.128.0

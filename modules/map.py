@@ -13,6 +13,7 @@ import matplotlib.patheffects as pe
 
 from matplotlib.axes import Axes
 from shapely.geometry import Point
+from adjustText import adjust_text
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
@@ -40,6 +41,13 @@ MAP_PROVIDERS = {
 }
 
 matplotlib.use("Agg")
+
+
+def points_to_data_offset(ax, dx_pt, dy_pt):
+    inv = ax.transData.inverted()
+    x0, y0 = inv.transform((0, 0))
+    x1, y1 = inv.transform((dx_pt, dy_pt))
+    return x1 - x0, y1 - y0
 
 
 def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = None, min_size: int = 3, max_size: int = 60) -> None:
@@ -318,7 +326,7 @@ def plot_stops_on_ax(
         stop_rgb = tuple(max(0.0, c * 0.5) for c in rgb)
         stop_color = stop_rgb
     except Exception:
-        stop_color = (1.0, 0.0, 0.0)
+        stop_color = (0.0, 0.0, 0.0)
 
     stop_rows = [row[1]._asdict() for row in stops]
     stops_points = [row[0] for row in stops]
@@ -331,6 +339,7 @@ def plot_stops_on_ax(
         return 0
 
     already_drawn = set()
+    texts = []
 
     for row in gdf_stops.itertuples(index=False):
         pt = row.geometry
@@ -341,10 +350,7 @@ def plot_stops_on_ax(
         else:
             continue
 
-        if name in endstops:
-            fontweight = "bold"
-        else:
-            fontweight = "normal"
+        fontweight = "bold" if name in endstops else "normal"
 
         if not isinstance(name, str) or not isinstance(pt, Point):
             continue
@@ -368,11 +374,12 @@ def plot_stops_on_ax(
                 dy = 4
                 va = "bottom"
 
+            ddx, ddy = points_to_data_offset(ax, dx, dy)
             txt = ax.annotate(
                 name,
                 xy=(pt.x, pt.y),
-                xytext=(dx, dy),
-                textcoords="offset points",
+                xytext=(pt.x + ddx, pt.y + ddy),
+                textcoords="data",
                 fontsize=label_fontsize,
                 color="black",
                 weight=fontweight,
@@ -389,8 +396,31 @@ def plot_stops_on_ax(
                 txt.set_path_effects([pe.withStroke(linewidth=0.5, foreground="white")])
             except Exception:
                 pass
+
+            texts.append(txt)
+
         except Exception:
             continue
+
+    if texts:
+        try:
+            adjust_text(
+                texts,
+                ax=ax,
+                expand_text=(1, 1),
+                expand_points=(1, 1),
+                arrowprops=dict(
+                    arrowstyle="-",
+                    lw=1,
+                    shrinkA=6,
+                    shrinkB=6,
+                    color=line_color,
+                ),
+                add_objects=[gdf_stops.geometry],
+                only_move={"text": "xy"},
+            )
+        except Exception as exc:
+            logger.warning("adjustText failed: %s", exc)
 
     return len(gdf_stops)
 
