@@ -6,7 +6,6 @@ import base64
 import logging
 import tempfile
 
-# import urllib.parse
 from typing import Annotated, Optional
 
 from fastapi import FastAPI, HTTPException, Form, Query
@@ -19,6 +18,7 @@ import modules.db as db
 
 from fahrplan import compute
 from modules.map import MAP_PROVIDERS
+from modules.logger import rotate_log_file, setup_logger
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -294,4 +294,6 @@ async def get_info():
 if __name__ == "__main__":
     import uvicorn
 
+    rotate_log_file()
+    setup_logger()
     uvicorn.run(app, host="0.0.0.0", port=8000)
