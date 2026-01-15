@@ -204,12 +204,16 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
 
         if len(stop_id_mapping[request.station_name]) == 1:
             ourstop = [stop_hierarchy[stop_id_mapping[request.station_name][0]]]
+            if ourstop[0].children is not None:
+                ourstop.extend(ourstop[0].children)
+                del ourstop[0].children
         else:
             ourstop = []
             for stop_id in stop_id_mapping[request.station_name]:
                 stop = stop_hierarchy[stop_id]
                 if stop.children is not None:
                     ourstop.extend(stop.children)
+                    del stop.children
                 ourstop.append(stop)
 
         logger.info("Generating timetable for %s", request.station_name)

@@ -515,12 +515,16 @@ def main():
             break
         if len(stop_id_mapping[choice]) == 1:
             ourstop = [stop_hierarchy[stop_id_mapping[choice][0]]]
+            if ourstop[0].children is not None:
+                ourstop.extend(ourstop[0].children)
+                del ourstop[0].children
         else:
             ourstop = []
             for stop_id in stop_id_mapping[choice]:
                 stop = stop_hierarchy[stop_id]
                 if stop.children is not None:
                     ourstop.extend(stop.children)
+                    del stop.children
                 ourstop.append(stop)
 
         compute(ourstop, stops, args, destinations)
