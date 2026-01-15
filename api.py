@@ -172,7 +172,6 @@ async def download_timetable(dl: str):
         if not os.path.exists(filepath):
             raise HTTPException(status_code=404, detail="Requested timetable not found")
 
-        logger.info("Timetable downloaded: %s", filepath)
         return FileResponse(path=filepath, filename=filename, media_type="application/pdf")
 
     except HTTPException:
