@@ -155,127 +155,149 @@ def draw_map(
     label_fontsize: int = 6,
     zoom: int = -1,
     map_provider: str = "BasemapAT",
-    dpi: int = 300,
+    dpi: int = 600,
     padding: int = 15,
     tmpdir: str = tempfile.gettempdir(),
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ) -> str | None:
-    """Draw map for selected routes."""
     ax = None
 
+    projected_geoms = []
+
     for route in routes["shapes"]:
-        gdf = gpd.GeoDataFrame({"geometry": [route["geometry"]]}, crs="EPSG:4326")
-        gxmin, gymin, gxmax, gymax = gdf.total_bounds
-        gbox_w = gxmax - gxmin
-        gbox_h = gymax - gymin
-        gbox_aspect = gbox_w / gbox_h
-        if gbox_aspect >= 1.0:
-            figsize = (10 * math.sqrt(2), 10)
-        else:
-            figsize = (10, 10 * math.sqrt(2))
+        geom = route["geometry"]
+        gdf = gpd.GeoDataFrame({"geometry": [geom]}, crs="EPSG:4326").to_crs("EPSG:3857")
+        projected_geoms.append(gdf.geometry.iloc[0])
+
         if ax is None:
-            ax = gdf.plot(facecolor="none", edgecolor=color, figsize=figsize, linewidth=2)
+            ax = gdf.plot(facecolor="none", edgecolor=color, figsize=(10, 10), linewidth=2)
         else:
-            gdf.plot(ax=ax, facecolor="none", edgecolor=color, figsize=figsize, linewidth=2)
+            gdf.plot(ax=ax, facecolor="none", edgecolor=color, linewidth=2)
 
     if ax is None:
         logger.info("No routes to plot on map")
         return None
 
-    geometries = []
-    for route in routes["shapes"]:
-        if "geometry" in route:
-            geometries.append(route["geometry"])
-    add_direction_arrows(ax, geometries, arrow_color=color)
+    stop_rows = [row[1]._asdict() for row in routes["points"]]
+    stop_points = [row[0] for row in routes["points"]]
+
+    gdf_stops = gpd.GeoDataFrame(stop_rows, geometry=stop_points, crs="EPSG:4326").to_crs("EPSG:3857")
+    gdf_stops.plot(ax=ax, color="black", markersize=30, zorder=5)
+
+    bounds = [g.bounds for g in projected_geoms]
+    xmin = min(b[0] for b in bounds)
+    ymin = min(b[1] for b in bounds)
+    xmax = max(b[2] for b in bounds)
+    ymax = max(b[3] for b in bounds)
+
+    xpad = (xmax - xmin) * (padding / 100.0)
+    ypad = (ymax - ymin) * (padding / 100.0)
+    xmin -= xpad
+    xmax += xpad
+    ymin -= ypad
+    ymax += ypad
+
+    map_w = xmax - xmin
+    map_h = ymax - ymin
+    map_aspect = map_w / map_h
+
+    A4_PORTRAIT = 210 / 297
+    A4_LANDSCAPE = 297 / 210
+
+    if map_aspect >= 1:
+        pagesize = pagesizes.landscape(pagesizes.A4)
+        target_aspect = A4_LANDSCAPE
+    else:
+        pagesize = pagesizes.portrait(pagesizes.A4)
+        target_aspect = A4_PORTRAIT
+
+    if map_aspect < target_aspect:
+        target_w = map_h * target_aspect
+        pad = (target_w - map_w) / 2
+        xmin -= pad
+        xmax += pad
+    else:
+        target_h = map_w / target_aspect
+        pad = (target_h - map_h) / 2
+        ymin -= pad
+        ymax += pad
+
+    ax.set_xlim(xmin, xmax)
+    ax.set_ylim(ymin, ymax)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_axis_off()
 
     try:
-        n = plot_stops_on_ax(ax, routes["points"], line_color=color, endstops=routes["endstops"], label_fontsize=label_fontsize, label_rotation=label_rotation)
+        n = plot_stops_on_ax(
+            ax,
+            routes["points"],
+            line_color=color,
+            endstops=routes["endstops"],
+            label_fontsize=label_fontsize,
+            label_rotation=label_rotation,
+        )
         logger.info("Plotted %d stops for route", n)
     except Exception as exc:
         logger.warning("Exception while plotting stops: %s", exc)
 
-    ax.set_axis_off()
-    xmin, xmax, ymin, ymax = ax.axis()
-    bbox_w = xmax - xmin
-    bbox_h = ymax - ymin
-    bbox_aspect = bbox_w / bbox_h
-    projection_aspect = ax.get_aspect()
-    if isinstance(projection_aspect, str):
-        projection_aspect = 1.0
-
-    if bbox_aspect >= 1.0:
-        target_aspect = math.sqrt(2) * projection_aspect
-        aspect_diff = bbox_aspect - target_aspect
-        logger.debug("Wide bounding box: bbox_aspect=%.3f, target_aspect=%.3f, aspect_diff=%.3f", bbox_aspect, target_aspect, aspect_diff)
-        pagesize = pagesizes.landscape(pagesizes.A4)
-        movey = 0
-    else:
-        target_aspect = 1.0 / math.sqrt(2) * projection_aspect
-        aspect_diff = bbox_aspect - target_aspect
-        logger.debug("Tall bounding box: bbox_aspect=%.3f, target_aspect=%.3f, aspect_diff=%.3f", bbox_aspect, target_aspect, aspect_diff)
-        pagesize = pagesizes.portrait(pagesizes.A4)
-        movey = 840
-    if aspect_diff < 0:
-        # Need to increase width
-        target_xsize = bbox_h * target_aspect
-        increase_x = (target_xsize - bbox_w) / 2.0
-        xmin = xmin - increase_x
-        xmax = xmax + increase_x
-        logger.debug("Increased width by %.3f to %.3f", increase_x * 2.0, target_xsize)
-    else:
-        # Need to increase height
-        target_ysize = bbox_w / target_aspect
-        increase_y = (target_ysize - bbox_h) / 2.0
-        ymin = ymin - increase_y
-        ymax = ymax + increase_y
-        logger.debug("Increased height by %.3f to %.3f", increase_y * 2.0, target_ysize)
-
-    xpadding = (xmax - xmin) * (padding / 100.0)
-    ypadding = (ymax - ymin) * (padding / 100.0)
-    ax.set(xlim=(xmin - xpadding, xmax + xpadding), ylim=(ymin - ypadding, ymax + ypadding))
-    logger.debug("Final axis limits: x=(%.6f, %.6f), y=(%.6f, %.6f)", xmin - xpadding, xmax + xpadding, ymin - ypadding, ymax + ypadding)
-
     zoom_param = zoom if zoom >= 0 else None
-    done = False
-    while not done:
-        try:
-            logger.debug("Adding basemap with zoom=%s and provider=%s", zoom_param, map_provider)
-            render_basemap(ax=ax, zoom=zoom_param, provider=get_provider_source(map_provider), cache_dir=os.path.join(SCRIPTDIR, "__pycache__"))
-            done = True
-        except Exception as exc:
-            logger.warning("Failed to add basemap: %s", exc)
-            if isinstance(zoom_param, int) and zoom_param > 0:
-                zoom_param -= 1
-                logger.info("Retrying with lower zoom level: %s", zoom_param)
-            else:
-                logger.error("Cannot add basemap, giving up.")
-                done = True
+    try:
+        render_basemap(
+            ax=ax,
+            extends=(xmin, xmax, ymin, ymax),
+            zoom=zoom_param,
+            provider=get_provider_source(map_provider),
+            cache_dir=os.path.join(SCRIPTDIR, "__pycache__"),
+        )
+    except Exception as exc:
+        logger.warning("Failed to add basemap: %s", exc)
 
     try:
         pdf = Canvas(page, pagesize=pagesize)
-        pdf.scale(pagesize[0] / 1188, pagesize[1] / (840 + movey))
-        _, b = tempfile.mkstemp(suffix=".png", dir=tmpdir)
-        plt.savefig(b, dpi=dpi, bbox_inches="tight", pad_inches=0, pil_kwargs={"compress_level": 0})
+
+        page_w, page_h = pagesize
+
+        margin_x = 50
+        margin_y = 60
+
+        draw_w = page_w - 2 * margin_x
+        draw_h = page_h - 2 * margin_y
+
+        _, tmp_png = tempfile.mkstemp(suffix=".png", dir=tmpdir)
+        plt.savefig(tmp_png, dpi=dpi, bbox_inches="tight", pad_inches=0)
         plt.close()
-        image = ImageReader(b)
-        pdf.drawImage(image, x=50, y=60, width=1088, height=730 + movey, preserveAspectRatio=True)
+
+        image = ImageReader(tmp_png)
+
+        pdf.drawImage(
+            image,
+            x=margin_x,
+            y=margin_y,
+            width=draw_w,
+            height=draw_h,
+            preserveAspectRatio=True,
+            anchor="c",
+        )
 
         if isinstance(logo, tempfile._TemporaryFileWrapper):
             image = ImageReader(logo.name)
-            pdf.drawImage(image, x=1041, y=15, width=80, height=30, preserveAspectRatio=True)
+            pdf.drawImage(image, x=page_w - 130, y=20, width=80, height=30, preserveAspectRatio=True)
         elif isinstance(logo, str):
             pdf.setFont("logo", 20)
             pdf.setFillColor(colors.black)
-            pdf.drawRightString(x=1108, y=23.5, text=logo)
+            pdf.drawRightString(x=page_w - 20, y=23.5, text=logo)
 
         pdf.setFont("foot", 17)
         pdf.setFillColor(colors.black)
-        pdf.drawString(x=80, y=23.5, text=stop_name)
+        pdf.drawString(x=margin_x, y=23.5, text=stop_name)
+
         pdf.save()
-        os.remove(b)
+        os.remove(tmp_png)
+
         logger.info("Saved map to %s", page)
     except Exception as exc:
         logger.error("Failed to save map to %s: %s", page, exc)
+
     return page
 
 
@@ -306,7 +328,7 @@ def plot_stops_on_ax(
     stop_rows = [row[1]._asdict() for row in stops]
     stops_points = [row[0] for row in stops]
 
-    gdf_stops = gpd.GeoDataFrame(stop_rows, geometry=stops_points, crs="EPSG:4326")
+    gdf_stops = gpd.GeoDataFrame(stop_rows, geometry=stops_points, crs="EPSG:4326").to_crs("EPSG:3857")
     try:
         gdf_stops.plot(ax=ax, color=stop_color, markersize=marker_size, zorder=5)
     except Exception as exc:
