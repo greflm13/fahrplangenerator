@@ -57,6 +57,13 @@ function changeColor() {
   document.documentElement.style.setProperty("--acc-color", color);
 }
 
+function fillSuggestion(station) {
+  const stationInput = document.getElementById("station_name");
+  const dataList = document.getElementById("station_datalist");
+  stationInput.value = station;
+  dataList.style.display = "none";
+}
+
 async function fetchStations(query = "") {
   if (query === "") {
     const response = await fetch("/api/stations");
@@ -64,19 +71,29 @@ async function fetchStations(query = "") {
     window.stations = stations.stations;
   } else {
     const dataList = document.getElementById("station_datalist");
-    dataList.innerHTML = ""; // Clear existing options
     if (query.length < 3) {
+      dataList.innerHTML = "";
+      dataList.style.display = "none";
       return;
     }
     const response = await fetch(
       `/api/stations?query=${encodeURIComponent(query)}`
     );
     const stations = await response.json();
-    stations.stations.forEach((station) => {
-      const option = document.createElement("option");
-      option.value = station;
-      dataList.appendChild(option);
-    });
+    dataList.innerHTML = "";
+    if (stations.total === 0) {
+      dataList.style.display = "none";
+    } else {
+      stations.stations.forEach((station) => {
+        const li = document.createElement("li");
+        li.innerText = station;
+        li.onclick = function () {
+          fillSuggestion(station);
+        };
+        dataList.appendChild(li);
+      });
+      dataList.style.display = "block";
+    }
   }
 }
 

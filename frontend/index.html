@@ -24,14 +24,14 @@
 <body>
   <h1 class="header">Fahrplan Generator</h1>
   <div class="form-wrapper">
-    <form id="schedule-form" action="/api/generate" method="post" enctype="application/x-www-form-urlencoded"
+    <form id="schedule-form" method="post" enctype="application/x-www-form-urlencoded"
       class="form" onsubmit="handleFormSubmit(event)" autocomplete="off">
       <label for="station_name">Stop/Station:</label>
-      <input type="text" list="station_datalist" id="station_name" name="station_name" required
+      <input type="text" id="station_name" name="station_name" required
         oninput="fetchStations(this.value)" />
-      <datalist id="station_datalist">
+      <ul id="station_datalist">
         <!-- Suggestions will be populated by JavaScript -->
-      </datalist>
+      </ul>
       <br /><br />
       <label for="color">Color:</label>
       <div class="choice-group">
