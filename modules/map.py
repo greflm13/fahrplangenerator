@@ -5,6 +5,7 @@ import tempfile
 
 from typing import List, Dict, Optional
 
+import matplotlib
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -37,6 +38,8 @@ MAP_PROVIDERS = {
     "UN": providers.UN.ClearMap,
     "SAT": providers.Esri.WorldImagery,
 }
+
+matplotlib.use("Agg")
 
 
 def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = None, min_size: int = 3, max_size: int = 60) -> None:
@@ -346,22 +349,42 @@ def plot_stops_on_ax(
         if not isinstance(name, str) or not isinstance(pt, Point):
             continue
         try:
+            x0, x1 = ax.get_xlim()
+            y0, y1 = ax.get_ylim()
+
+            dx, dy = 4, 4
+            ha = "left"
+            va = "center"
+
+            if pt.x > x0 + 0.7 * (x1 - x0):
+                dx = -4
+                ha = "right"
+
+            if pt.y > y0 + 0.7 * (y1 - y0):
+                dy = -4
+                va = "top"
+
+            if pt.y < y0 + 0.3 * (y1 - y0):
+                dy = 4
+                va = "bottom"
+
             txt = ax.annotate(
                 name,
                 xy=(pt.x, pt.y),
-                xytext=(4, 4),
+                xytext=(dx, dy),
                 textcoords="offset points",
                 fontsize=label_fontsize,
                 color="black",
                 weight=fontweight,
-                ha="left",
-                va="center",
+                ha=ha,
+                va=va,
                 zorder=10,
                 rotation=label_rotation,
                 rotation_mode="anchor",
                 bbox={"boxstyle": "round,pad=0.1", "facecolor": "white", "edgecolor": "black", "linewidth": 0.2, "alpha": 2 / 3},
                 clip_on=False,
             )
+            txt.set_clip_path(ax.patch)
             try:
                 txt.set_path_effects([pe.withStroke(linewidth=0.5, foreground="white")])
             except Exception:
