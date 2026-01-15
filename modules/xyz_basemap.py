@@ -1,14 +1,14 @@
 import os
 import io
 import math
-import time
+import asyncio
 import logging
-import requests
 
 from typing import Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import aiohttp
 import numpy as np
+
 from PIL import Image
 from pyproj import Transformer
 from matplotlib.axes import Axes
@@ -22,7 +22,6 @@ else:
 SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
 
 _TILE_MEM_CACHE: dict[tuple, Image.Image] = {}
-_HTTP_SESSION = requests.Session()
 
 TILE_SIZE = 256
 USER_AGENT = "xyzservices-tile-renderer/1.1"
@@ -101,47 +100,40 @@ class TileCache:
             f"{y}.png",
         )
 
-    def load(self, provider: TileProvider, z: int, x: int, y: int) -> Image.Image | None:
+    async def load(self, provider: TileProvider, z: int, x: int, y: int) -> Image.Image | None:
         key = (provider.name, z, x, y)
         if key in _TILE_MEM_CACHE:
             return _TILE_MEM_CACHE[key]
 
         path = self.tile_path(provider, z, x, y)
         if os.path.exists(path):
-            img = Image.open(path).convert("RGBA")
+            loop = asyncio.get_running_loop()
+            img = await loop.run_in_executor(None, lambda: Image.open(path).convert("RGBA"))
             _TILE_MEM_CACHE[key] = img
             return img
         return None
 
-    def save(self, provider: TileProvider, z: int, x: int, y: int, img: Image.Image) -> None:
+    async def save(self, provider: TileProvider, z: int, x: int, y: int, img: Image.Image) -> None:
         path = self.tile_path(provider, z, x, y)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        img.save(path, format="PNG")
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: img.save(path, format="PNG"))
 
 
-def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, x: int, y: int):
+async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, x: int, y: int):
     key = (provider.name, z, x, y)
 
     if key in _TILE_MEM_CACHE:
         return key, _TILE_MEM_CACHE[key]
 
-    tile = cache.load(provider, z, x, y)
+    tile = await cache.load(provider, z, x, y)
     if tile is not None:
         _TILE_MEM_CACHE[key] = tile
         return key, tile
 
-    tile = fetch_tile_with_retry(
-        provider,
-        z,
-        x,
-        y,
-        timeout=5.0,
-        retries=3,
-        backoff=0.5,
-    )
-
+    tile = await fetch_tile_with_retry(provider, z, x, y)
     try:
-        cache.save(provider, z, x, y, tile)
+        await cache.save(provider, z, x, y, tile)
     except Exception:
         pass
 
@@ -149,35 +141,29 @@ def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, x: int
     return key, tile
 
 
-def fetch_tile_with_retry(provider: TileProvider, z: int, x: int, y: int, *, timeout: float = 5.0, retries: int = 3, backoff: float = 0.5) -> Image.Image:
-    """
-    Fetch a tile with timeout + retry.
-    Returns a transparent tile if all retries fail.
-    """
-
+async def fetch_tile_with_retry(provider: TileProvider, z: int, x: int, y: int, *, timeout: float = 5.0, retries: int = 3, backoff: float = 0.5) -> Image.Image:
     last_err = None
-
     for attempt in range(1, retries + 1):
         try:
-            return fetch_tile(provider, z, x, y, timeout=timeout)
-
+            return await fetch_tile(provider, z, x, y, timeout=timeout)
         except Exception as e:
             last_err = e
             if attempt < retries:
-                sleep = backoff * (2 ** (attempt - 1))
-                time.sleep(sleep)
+                await asyncio.sleep(backoff * (2 ** (attempt - 1)))
 
-    img = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
-    return img
+    return Image.new("RGBA", (256, 256), (0, 0, 0, 0))
 
 
-def fetch_tile(provider: TileProvider, z: int, x: int, y: int, timeout: float = 5.0) -> Image.Image:
+async def fetch_tile(provider: TileProvider, z: int, x: int, y: int, timeout: float = 5.0) -> Image.Image:
     url = provider.build_url(x=x, y=y, z=z)
-    logger.info("Fetching Tile", extra={"provider": provider.get("name"), "tile": {"x": x, "y": y, "z": z}})
     headers = {"User-Agent": USER_AGENT}
-    r = _HTTP_SESSION.get(url, headers=headers, timeout=timeout)
-    r.raise_for_status()
-    return Image.open(io.BytesIO(r.content)).convert("RGBA")
+
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(timeout)) as r:
+            r.raise_for_status()
+            data = await r.read()
+
+    return Image.open(io.BytesIO(data)).convert("RGBA")
 
 
 def draw_attribution(ax, provider: TileProvider) -> None:
@@ -204,7 +190,7 @@ def draw_attribution(ax, provider: TileProvider) -> None:
     )
 
 
-def render_basemap(
+async def render_basemap(
     ax: Axes,
     extends: Tuple[float, float, float, float],
     zoom: int | None,
@@ -242,10 +228,10 @@ def render_basemap(
     if first_key in _TILE_MEM_CACHE:
         sample_tile = _TILE_MEM_CACHE[first_key]
     else:
-        sample_tile = cache.load(provider, zoom, x0, y1)
+        sample_tile = await cache.load(provider, zoom, x0, y1)
         if sample_tile is None:
-            sample_tile = fetch_tile(provider, zoom, x0, y1)
-            cache.save(provider, zoom, x0, y1, sample_tile)
+            sample_tile = await fetch_tile(provider, zoom, x0, y1)
+            await cache.save(provider, zoom, x0, y1, sample_tile)
         _TILE_MEM_CACHE[first_key] = sample_tile
 
     tile_px = sample_tile.width
@@ -267,16 +253,15 @@ def render_basemap(
                 continue
             tasks.append((xt, yt))
 
-    results = {}
+    sem = asyncio.Semaphore(max_workers)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(_load_or_fetch_tile, cache, provider, zoom, xt, yt): (xt, yt) for xt, yt in tasks}
+    async def guarded_load(xt, yt):
+        async with sem:
+            return await _load_or_fetch_tile(cache, provider, zoom, xt, yt)
 
-        for fut in as_completed(futures):
-            key, tile = fut.result()
-            results[key] = tile
+    results = await asyncio.gather(*(guarded_load(x, y) for x, y in tasks))
 
-    for (prov, z, xt, yt), tile in results.items():
+    for (prov, z, xt, yt), tile in results:
         cx = xt - x0
         cy = yt - y1
         place(tile, cx, cy)

@@ -2,6 +2,7 @@
 
 import os
 import logging
+import asyncio
 import argparse
 import tempfile
 from typing import Any
@@ -247,7 +248,7 @@ def create_page(
     return path
 
 
-def compute(
+async def compute(
     ourstop: list[HierarchyStop],
     stops: dict[str, Any],
     args,
@@ -259,16 +260,16 @@ def compute(
     ourstops = [stop.to_dict() for stop in ourstop]
     logger.info("computing times")
     stopids = [stop["stop_id"] for stop in ourstops]
-    ourtimes = db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
+    ourtimes = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
     logger.info("computing trips")
-    times = db.get_in_filtered_data("stop_times", column="stop_id", values=stopids, columns=["trip_id"])
-    ourtrips = db.get_in_filtered_data("trips", column="trip_id", values=times)
+    times = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids, columns=["trip_id"])
+    ourtrips = await db.get_in_filtered_data("trips", column="trip_id", values=times)
     logger.info("computing services")
-    services = db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["service_id"])
-    ourservs = db.get_in_filtered_data("calendar", column="service_id", values=services)
+    services = await db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["service_id"])
+    ourservs = await db.get_in_filtered_data("calendar", column="service_id", values=services)
     logger.info("computing routes")
-    routeids = db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["route_id"])
-    ourroute = db.get_in_filtered_data("routes", column="route_id", values=routeids)
+    routeids = await db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["route_id"])
+    ourroute = await db.get_in_filtered_data("routes", column="route_id", values=routeids)
 
     logger.info("playing variable shuffle")
 
@@ -278,7 +279,7 @@ def compute(
         return
 
     selected_stop_times = utils.build_list_index(ourtimes, "trip_id")
-    stop_times = utils.build_stop_times_index([trip.trip_id for trip in ourtrips])
+    stop_times = await utils.build_stop_times_index([trip.trip_id for trip in ourtrips])
     calendar = utils.build_list_index(ourservs, "service_id")
     selected_routes = utils.build_list_index(ourroute, "route_id")
 
@@ -408,11 +409,11 @@ def compute(
                     )
                     if args.map:
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
-                        pages[line][k + "map"] = draw_map(
+                        pages[line][k + "map"] = await draw_map(
                             page=mappage,
                             stop_name=ourstop[0].stop_name,
                             logo=tmpfile,
-                            routes=utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, [stop["stop_id"] for stop in ourstops]),
+                            routes=await utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, [stop["stop_id"] for stop in ourstops]),
                             color=color,
                             label_rotation=15,
                             tmpdir=tmpdir,
@@ -448,7 +449,7 @@ def compute(
             pass
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(formatter_class=RichHelpFormatter)
     parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", default=[], required=False, dest="input")
     parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
@@ -478,21 +479,21 @@ def main():
         append = True
 
     if args.mapping_csv:
-        db.load_hst_csv(args.mapping_csv, append=append)
+        await db.load_hst_csv(args.mapping_csv, append=append)
 
     if len(args.input) > 0:
         for aid, folder in tqdm.tqdm(enumerate(args.input), total=len(args.input), desc="Loading data", unit="folder", ascii=True, dynamic_ncols=True):
             if os.path.isdir(folder):
-                db.load_gtfs(folder, aid, append=append)
+                await db.load_gtfs(folder, aid, append=append)
                 append = True
             else:
                 logger.error("Input folder %s does not exist", folder)
 
-    stops = db.get_table_data("stops")
+    stops = await db.get_table_data("stops")
 
-    stop_hierarchy = utils.build_stop_hierarchy()
-    stop_hierarchy = utils.query_stop_names(stop_hierarchy)
-    destinations = utils.build_dest_list()
+    stop_hierarchy = await utils.build_stop_hierarchy()
+    stop_hierarchy = await utils.query_stop_names(stop_hierarchy)
+    destinations = await utils.build_dest_list()
     stop_id_mapping = {}
     for stop in stop_hierarchy.values():
         if stop.stop_name not in stop_id_mapping:
@@ -506,7 +507,10 @@ def main():
     choices = sorted(stop_id_mapping.keys())
     while True:
         try:
-            choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
+            choice = await asyncio.to_thread(
+                lambda: questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
+            )
+            # choice = questionary.autocomplete("Haltestelle/Bahnhof: ", choices=choices, match_middle=True, validate=lambda val: val in choices, style=custom_style).ask()
         except KeyboardInterrupt:
             print()
             break
@@ -527,8 +531,8 @@ def main():
                     del stop.children
                 ourstop.append(stop)
 
-        compute(ourstop, stops, args, destinations)
+        await compute(ourstop, stops, args, destinations)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

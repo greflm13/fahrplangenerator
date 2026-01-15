@@ -45,13 +45,13 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
     return data
 
 
-def build_shapedict(shape_ids: List[str]) -> Dict[str, List[Point]]:
+async def build_shapedict(shape_ids: List[str]) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = defaultdict(list)
 
-    shapes = get_in_filtered_data_iter("shapes", column="shape_id", values=shape_ids)
+    shapes = await get_in_filtered_data_iter("shapes", column="shape_id", values=shape_ids)
 
-    for shapeline in shapes:
+    async for shapeline in shapes:
         sid = shapeline.shape_id
         shapedict[sid].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
 
@@ -66,11 +66,11 @@ def build_list_index(list: Iterable, index: str) -> Dict[str, Any]:
     return data
 
 
-def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
+async def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
     """Index stop_times by trip_id for quick lookup."""
     logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     idx: Dict[str, List] = {}
-    for st in get_in_filtered_data_iter("stop_times", column="trip_id", values=trip_ids):
+    async for st in await get_in_filtered_data_iter("stop_times", column="trip_id", values=trip_ids):
         tid = getattr(st, "trip_id")
         if not tid:
             continue
@@ -79,7 +79,7 @@ def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
     return idx
 
 
-def prepare_linedraw_info(
+async def prepare_linedraw_info(
     stop_times: Dict[str, List],
     trips: Iterable,
     stops: Dict[str, Any],
@@ -95,7 +95,7 @@ def prepare_linedraw_info(
         if trip.route_id == line and "d" + trip.direction_id == direction:
             if trip.shape_id != "":
                 shapes.add(Shape(trip.shape_id, trip.trip_id))
-    shapedict = build_shapedict([shap.shapeid for shap in shapes])
+    shapedict = await build_shapedict([shap.shapeid for shap in shapes])
     linedrawinfo = {"shapes": [], "points": [], "endstops": []}
     for shap in shapes:
         times = stop_times[shap.tripid]
@@ -111,7 +111,7 @@ def prepare_linedraw_info(
                             [
                                 (
                                     Point(float(stops[stop.stop_id].stop_lon), float(stops[stop.stop_id].stop_lat)),
-                                    Stop(stop.stop_id, get_stop_name(stop.stop_id)),
+                                    Stop(stop.stop_id, await get_stop_name(stop.stop_id)),
                                 )
                                 for stop in tim
                             ]
@@ -119,7 +119,7 @@ def prepare_linedraw_info(
                         if len(geo) != 1:
                             linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
                         endstop = stops[times[-1].stop_id]
-                        end_stop_names.add(get_stop_name(endstop.stop_id))
+                        end_stop_names.add(await get_stop_name(endstop.stop_id))
     linedrawinfo["points"] = list(stop_points)
     linedrawinfo["endstops"] = list(end_stop_names)
     return linedrawinfo
@@ -222,10 +222,10 @@ def generate_contrasting_vibrant_color():
             return color
 
 
-def build_stop_hierarchy() -> Dict[str, HierarchyStop]:
+async def build_stop_hierarchy() -> Dict[str, HierarchyStop]:
     hierarchy: Dict[str, HierarchyStop] = {}
 
-    all_stops = get_table_data("stops")
+    all_stops = await get_table_data("stops")
 
     children_by_parent: Dict[str, List] = {}
     parent_stops = []
@@ -256,10 +256,10 @@ def get_place(coords: Tuple[float, float]):
         return {}
 
 
-def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop], loadingbars=True) -> Dict[str, HierarchyStop]:
+async def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop], loadingbars=True) -> Dict[str, HierarchyStop]:
     logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
     try:
-        locationcache = get_table_data("location_cache")
+        locationcache = await get_table_data("location_cache")
         locationcache = {entry.stop_id: entry.name for entry in locationcache}
     except Exception:
         locationcache = {}
@@ -267,7 +267,7 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop], loadingbars=True)
     # Load HST table once, handling both hst and stg column naming conventions
     globid_to_name = {}
     try:
-        all_hst_data = get_table_data("hst")
+        all_hst_data = await get_table_data("hst")
         for row in all_hst_data:
             # Try hst columns first, fall back to stg columns
             globid = getattr(row, "hst_globid", None) or getattr(row, "stg_globid", None)
@@ -343,21 +343,21 @@ def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop], loadingbars=True)
                 for child in stop.children:
                     locationcache[child.stop_id] = locationcache[stop.stop_id]
     finally:
-        update_location_cache(locationcache)
+        await update_location_cache(locationcache)
 
     return stop_hierarchy
 
 
-def get_stop_name(stop_id: str) -> str:
-    return get_table_data("location_cache", columns=["name"], filters={"stop_id": stop_id})[0]
+async def get_stop_name(stop_id: str) -> str:
+    rows = await get_table_data("location_cache", columns=["name"], filters={"stop_id": stop_id})
+    return rows[0]
 
 
-def build_dest_list() -> Dict[str, Dict[str, str]]:
+async def build_dest_list() -> Dict[str, Dict[str, str]]:
     destinations = {}
-    for trip in get_table_data("trips", columns=["route_id", "direction_id"], distinct=True):
+    for trip in await get_table_data("trips", columns=["route_id", "direction_id"], distinct=True):
         if trip.route_id not in destinations:
             destinations[trip.route_id] = {}
-        destinations[trip.route_id][f"d{trip.direction_id}"] = get_most_frequent_values(
-            "trips", column="trip_headsign", filters={"route_id": trip.route_id, "direction_id": trip.direction_id}
-        )[0].trip_headsign
+        headsigns = await get_most_frequent_values("trips", column="trip_headsign", filters={"route_id": trip.route_id, "direction_id": trip.direction_id})
+        destinations[trip.route_id][f"d{trip.direction_id}"] = headsigns[0].trip_headsign
     return destinations

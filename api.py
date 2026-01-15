@@ -34,10 +34,10 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager to load GTFS data at startup."""
     global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS, TMPDIR
     try:
-        stops = db.get_table_data("stops")
-        stop_hierarchy = utils.build_stop_hierarchy()
-        stop_hierarchy = utils.query_stop_names(stop_hierarchy, loadingbars=False)
-        destinations = utils.build_dest_list()
+        stops = await db.get_table_data("stops")
+        stop_hierarchy = await utils.build_stop_hierarchy()
+        stop_hierarchy = await utils.query_stop_names(stop_hierarchy, loadingbars=False)
+        destinations = await utils.build_dest_list()
 
         stop_id_mapping = {}
         for stop in stop_hierarchy.values():
@@ -226,7 +226,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
 
         _, args.output = tempfile.mkstemp(suffix=".pdf", prefix=f"{safe_station}_", dir=TMPDIR)
 
-        compute(ourstop, stops, args, destinations, False, logger)
+        await compute(ourstop, stops, args, destinations, False, logger)
 
         if not os.path.exists(args.output):
             raise HTTPException(status_code=500, detail="Failed to generate PDF file")

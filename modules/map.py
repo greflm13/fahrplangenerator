@@ -145,7 +145,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
         logger.debug("Failed to add direction arrows: %s", exc)
 
 
-def draw_map(
+async def draw_map(
     page: str,
     stop_name: str,
     logo,
@@ -242,7 +242,7 @@ def draw_map(
 
     zoom_param = zoom if zoom >= 0 else None
     try:
-        render_basemap(
+        await render_basemap(
             ax=ax,
             extends=(xmin, xmax, ymin, ymax),
             zoom=zoom_param,
