@@ -256,22 +256,20 @@ async def compute(
     loadingbars: bool = True,
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ):
-    logger.info("computing stops")
+    logger.info("Computing stops")
     ourstops = [stop.to_dict() for stop in ourstop]
-    logger.info("computing times")
+    logger.info("Computing times")
     stopids = [stop["stop_id"] for stop in ourstops]
     ourtimes = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
-    logger.info("computing trips")
+    logger.info("Computing trips")
     times = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids, columns=["trip_id"])
     ourtrips = await db.get_in_filtered_data("trips", column="trip_id", values=times)
-    logger.info("computing services")
+    logger.info("Computing services")
     services = await db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["service_id"])
     ourservs = await db.get_in_filtered_data("calendar", column="service_id", values=services)
-    logger.info("computing routes")
+    logger.info("Computing routes")
     routeids = await db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["route_id"])
     ourroute = await db.get_in_filtered_data("routes", column="route_id", values=routeids)
-
-    logger.info("playing variable shuffle")
 
     if ourstops == []:
         print(f'Stop "{ourstop}" not found!')
@@ -359,13 +357,13 @@ async def compute(
 
     if args.logo:
         try:
-            logger.info("getting logo")
+            logger.info("Getting logo")
             res = requests.get("https://files.sorogon.eu/logo.png")
             tmpfile = tempfile.NamedTemporaryFile(suffix=".png")
             tmpfile.write(res.content)
             tmpfile.flush()
         except requests.exceptions.ConnectionError:
-            logger.info("fallback to string logo")
+            logger.info("Fallback to string logo")
             try:
                 pdfmetrics.registerFont(TTFont("logo", "BarlowCondensed_Thin.ttf"))
             except Exception:
@@ -396,6 +394,7 @@ async def compute(
                     page = pages.get(line, {}).get(k, {})
                     if not isinstance(page, str):
                         page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
+                    logger.info("Creating page")
                     pages[line][k] = create_page(
                         selected_routes[line].route_short_name,
                         dest,
@@ -408,6 +407,7 @@ async def compute(
                         tmpfile,
                     )
                     if args.map:
+                        logger.info("Drawing map")
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
                         pages[line][k + "map"] = await draw_map(
                             page=mappage,
