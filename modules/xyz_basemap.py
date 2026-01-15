@@ -142,6 +142,7 @@ async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, 
 
 
 async def fetch_tile_with_retry(provider: TileProvider, z: int, x: int, y: int, *, timeout: float = 5.0, retries: int = 3, backoff: float = 0.5) -> Image.Image:
+    logger.info("Downloading Tile", extra={"provider": provider.get("name"), "tile": {"x": x, "y": y, "zoom": z}})
     for attempt in range(1, retries + 1):
         try:
             return await fetch_tile(provider, z, x, y, timeout=timeout)
