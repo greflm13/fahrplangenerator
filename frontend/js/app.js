@@ -72,35 +72,36 @@ function select(event) {
   }
 }
 
-async function fetchStations(query = "") {
-  if (query === "") {
-    const response = await fetch("/api/stations");
-    const stations = await response.json();
-    window.stations = stations.stations;
-  } else {
-    const dataList = document.getElementById("station_datalist");
-    if (query.length < 3) {
-      dataList.innerHTML = "";
-      dataList.style.display = "none";
-      return;
-    }
-    const response = await fetch(`/api/stations?query=${encodeURIComponent(query)}`);
-    const stations = await response.json();
+async function fetchStations() {
+  const response = await fetch("/api/stations");
+  const stations = await response.json();
+  window.stations = stations.stations;
+}
+
+async function fetchSuggestions() {
+  const stationInput = document.getElementById("station_name");
+  const dataList = document.getElementById("station_datalist");
+  if (query.length < 3) {
     dataList.innerHTML = "";
-    if (stations.total === 0) {
-      dataList.style.display = "none";
-    } else {
-      stations.stations.forEach((station) => {
-        const li = document.createElement("li");
-        li.innerText = station;
-        li.onclick = function () {
-          fillSuggestion(station);
-        };
-        li.addEventListener("keydown", select);
-        dataList.appendChild(li);
-      });
-      dataList.style.display = "block";
-    }
+    dataList.style.display = "none";
+    return;
+  }
+  const response = await fetch(`/api/stations?query=${encodeURIComponent(stationInput.value)}`);
+  const stations = await response.json();
+  dataList.innerHTML = "";
+  if (stations.total === 0) {
+    dataList.style.display = "none";
+  } else {
+    stations.stations.forEach((station) => {
+      const li = document.createElement("li");
+      li.innerText = station;
+      li.onclick = function () {
+        fillSuggestion(station);
+      };
+      li.addEventListener("keydown", select);
+      dataList.appendChild(li);
+    });
+    dataList.style.display = "block";
   }
 }
 
@@ -160,9 +161,7 @@ function validateForm() {
 
 document.getElementById("schedule-form").addEventListener("submint", handleFormSubmit);
 document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
-document.getElementById("station_name").addEventListener("input", () => {
-  fetchStations(this.value);
-});
+document.getElementById("station_name").addEventListener("input", fetchSuggestions);
 document.getElementById("station_name").addEventListener("keydown", select);
 document.getElementById("color").addEventListener("change", changeColor);
 
