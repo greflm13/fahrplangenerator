@@ -68,7 +68,6 @@ function select(event) {
   const dataList = [...document.getElementsByTagName("li")];
   const focus = document.querySelector(":focus");
   let activeElement;
-  console.log(focus);
   if (event.key == "ArrowDown" || event.key == "ArrowUp") {
     console.log("event!");
     dataList.forEach((item) => {
@@ -78,18 +77,19 @@ function select(event) {
     });
     console.log(activeElement);
     if (event.key == "ArrowDown") {
-      if (activeElement == undefined) {
+      if (activeElement === undefined) {
         dataList[0].focus();
       } else if (activeElement.nextElementSibling != null) {
         activeElement.nextElementSibling.focus();
       }
     } else if (event.key == "ArrowUp") {
-      if (activeElement == undefined) {
+      if (activeElement === undefined) {
         dataList[0].focus();
       } else if (activeElement.previousElementSibling != null) {
         activeElement.previousElementSibling.focus();
       }
     }
+    console.log(focus);
   }
 }
 
