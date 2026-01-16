@@ -70,6 +70,7 @@ function select(event) {
   if (event.key == "ArrowDown") {
     console.log(event.target);
     console.log(stationInput);
+    console.log(event.target == stationInput);
     if (event.target == stationInput) {
       dataList[0].select = true;
     } else {
