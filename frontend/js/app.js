@@ -79,14 +79,14 @@ async function fetchStations() {
 }
 
 async function fetchSuggestions() {
-  const stationInput = document.getElementById("station_name");
+  const stationInput = document.getElementById("station_name").value;
   const dataList = document.getElementById("station_datalist");
-  if (query.length < 3) {
+  if (stationInput.length < 3) {
     dataList.innerHTML = "";
     dataList.style.display = "none";
     return;
   }
-  const response = await fetch(`/api/stations?query=${encodeURIComponent(stationInput.value)}`);
+  const response = await fetch(`/api/stations?query=${encodeURIComponent(stationInput)}`);
   const stations = await response.json();
   dataList.innerHTML = "";
   if (stations.total === 0) {
