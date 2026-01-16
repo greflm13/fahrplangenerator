@@ -175,6 +175,7 @@ body {
 }
 
 .form ul {
+  font-weight: 400;
   list-style-type: none;
   width: calc(100% - 0.1em);
   padding: 0;
