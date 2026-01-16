@@ -68,6 +68,8 @@ function select(event) {
   const stationInput = document.getElementById("station_name");
   const dataList = document.getElementsByTagName("li");
   if (event.key == "ArrowDown") {
+    console.log(event.target);
+    console.log(stationInput);
     if (event.target == stationInput) {
       dataList[0].select = true;
     } else {
