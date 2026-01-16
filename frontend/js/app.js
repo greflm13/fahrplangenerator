@@ -160,13 +160,15 @@ function validateForm() {
 
 document.getElementById("schedule-form").addEventListener("submint", handleFormSubmit);
 document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
+document.getElementById("station_name").addEventListener("input", () => {
+  fetchStations(this.value);
+});
 document.getElementById("station_name").addEventListener("keydown", select);
-document.getElementById("station_name").addEventListener("input", fetchStations(this.value));
 document.getElementById("color").addEventListener("change", changeColor);
 
 window.onload = function () {
   generateColor();
   toggleMapOptions();
-  // fetchMapProviders();
-  // fetchStations();
+  fetchMapProviders();
+  fetchStations();
 };
