@@ -105,7 +105,7 @@ async function fetchSuggestions() {
   dataList.innerHTML = "";
   dataList.setAttribute("role", "listbox");
 
-  if (stations.total === 0) {
+  if (stations.total === 0 || (stations.total === 1 && stations.stations[0] === q)) {
     dataList.style.display = "none";
     currentIndex = -1;
     return;
