@@ -92,7 +92,6 @@ textarea {
   --bg-color: white;
 }
 
-
 body {
   font-family: "Fira Sans", sans-serif;
   background: #f5f5f5;
@@ -110,7 +109,6 @@ body {
   font-weight: 900;
 }
 
-
 .header {
   color: var(--acc-color);
   text-align: center;
@@ -119,7 +117,6 @@ body {
   margin-bottom: 0.5em;
 }
 
-
 .form {
   max-width: 720px;
   margin: 0 auto 2em auto;
@@ -127,7 +124,6 @@ body {
   border: 0.15em solid var(--border-color);
   padding: 1.5em;
 }
-
 
 .form fieldset {
   border: 0.15em solid var(--border-color);
@@ -140,13 +136,11 @@ body {
   padding: 0 0.5em;
 }
 
-
 .form label {
   display: block;
   font-weight: 700;
   margin-bottom: 0.3em;
 }
-
 
 .form select {
   width: 100%;
@@ -172,7 +166,6 @@ body {
   outline: none;
   border-color: var(--acc-color);
 }
-
 
 .form input[type="color"] {
   padding: 0;
@@ -209,12 +202,12 @@ body {
   background: var(--bg-color);
 }
 
-.form ul li:hover {
+.form ul li:hover,
+.form ul li:focus {
   background: var(--acc-color);
   color: var(--text-color);
   cursor: pointer;
 }
-
 
 .choice input[type="radio"],
 .choice input[type="checkbox"] {
@@ -222,7 +215,6 @@ body {
   opacity: 0;
   pointer-events: none;
 }
-
 
 .choice {
   display: inline-flex;
@@ -233,7 +225,6 @@ body {
   user-select: none;
   padding-top: 0.4em;
 }
-
 
 .choice span::before {
   content: "";
@@ -246,28 +237,23 @@ body {
   background: white;
 }
 
-
-.choice input[type="radio"]+span::before {
+.choice input[type="radio"] + span::before {
   border-radius: 0;
 }
-
 
 .choice.checkbox span::before {
   border-radius: 0;
 }
 
-
-.choice input:checked+span::before {
+.choice input:checked + span::before {
   background: var(--acc-color);
   box-shadow: inset 0 0 0 0.2em white;
 }
 
-
-.choice input:focus+span::before {
+.choice input:focus + span::before {
   outline: 0.2em solid var(--acc-color);
   outline-offset: 0.15em;
 }
-
 
 .choice-group {
   display: flex;
@@ -276,7 +262,6 @@ body {
   border: 0.15em solid var(--border-color);
   padding: 0.6em;
 }
-
 
 .form button[type="submit"] {
   display: block;
@@ -294,12 +279,11 @@ body {
   filter: brightness(1.05);
 }
 
-
 #map-options {
   background: #fafafa;
 }
 
-.form>*+* {
+.form > * + * {
   margin-top: 1em;
 }
 
@@ -353,7 +337,6 @@ body {
 }
 
 @keyframes bblFadInOut {
-
   0%,
   80%,
   100% {
@@ -452,10 +435,7 @@ body {
   /* Style adjustments for viewports that meet the condition */
 }
 
-@media print,
-(-webkit-min-device-pixel-ratio: 1.25),
-(min-resolution: 1.25dppx),
-(min-resolution: 120dpi) {
+@media print, (-webkit-min-device-pixel-ratio: 1.25), (min-resolution: 1.25dppx), (min-resolution: 120dpi) {
   /* Style adjustments for high resolution devices */
 }
 
@@ -466,7 +446,6 @@ body {
    ========================================================================== */
 
 @media print {
-
   *,
   *::before,
   *::after {

@@ -64,6 +64,14 @@ function fillSuggestion(station) {
   dataList.style.display = "none";
 }
 
+function select(event) {
+  if (event.key == "ArrowDown") {
+    console.log(event.target);
+  } else if (event.key == "ArrowUp") {
+    console.log(event.target);
+  }
+}
+
 async function fetchStations(query = "") {
   if (query === "") {
     const response = await fetch("/api/stations");
@@ -76,9 +84,7 @@ async function fetchStations(query = "") {
       dataList.style.display = "none";
       return;
     }
-    const response = await fetch(
-      `/api/stations?query=${encodeURIComponent(query)}`
-    );
+    const response = await fetch(`/api/stations?query=${encodeURIComponent(query)}`);
     const stations = await response.json();
     dataList.innerHTML = "";
     if (stations.total === 0) {
@@ -90,6 +96,7 @@ async function fetchStations(query = "") {
         li.onclick = function () {
           fillSuggestion(station);
         };
+        li.addEventListener("keydown", select);
         dataList.appendChild(li);
       });
       dataList.style.display = "block";
@@ -151,13 +158,15 @@ function validateForm() {
   }
 }
 
-document
-  .getElementById("generate-map")
-  .addEventListener("change", toggleMapOptions);
+document.getElementById("schedule-form").addEventListener("submint", handleFormSubmit);
+document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
+document.getElementById("station_name").addEventListener("keydown", select);
+document.getElementById("station_name").addEventListener("input", fetchStations(this.value));
+document.getElementById("color").addEventListener("change", changeColor);
 
 window.onload = function () {
   generateColor();
   toggleMapOptions();
-  fetchMapProviders();
-  fetchStations();
+  // fetchMapProviders();
+  // fetchStations();
 };

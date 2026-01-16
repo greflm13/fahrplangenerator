@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 import modules.utils as utils
 import modules.db as db
 
-from fahrplan import compute
+from modules.compute import compute
 from modules.map import MAP_PROVIDERS
 from modules.logger import rotate_log_file, setup_logger
 

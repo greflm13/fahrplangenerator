@@ -48,17 +48,13 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
 async def build_shapedict(shape_ids: List[str]) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = defaultdict(list)
-
-    shapes = await get_in_filtered_data_iter("shapes", column="shape_id", values=shape_ids)
-
-    async for shapeline in shapes:
-        sid = shapeline.shape_id
-        shapedict[sid].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
+    async for shapeline in await get_in_filtered_data_iter("shapes", column="shape_id", values=shape_ids):
+        shapedict[shapeline.shape_id].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
 
     return dict(shapedict)
 
 
-def build_list_index(list: Iterable, index: str) -> Dict[str, Any]:
+def build_list_index(list: List, index: str) -> Dict[str, Any]:
     """Build an index from a list of namedtuples based on a specified key."""
     data: Dict[str, Any] = {}
     for item in list:

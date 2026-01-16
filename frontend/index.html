@@ -24,11 +24,9 @@
 <body>
   <h1 class="header">Fahrplan Generator</h1>
   <div class="form-wrapper">
-    <form id="schedule-form" method="post" enctype="application/x-www-form-urlencoded"
-      class="form" onsubmit="handleFormSubmit(event)" autocomplete="off">
+    <form id="schedule-form" method="post" enctype="application/x-www-form-urlencoded" class="form" autocomplete="off">
       <label for="station_name">Stop/Station:</label>
-      <input type="text" id="station_name" name="station_name" required
-        oninput="fetchStations(this.value)" />
+      <input type="text" id="station_name" name="station_name" required />
       <ul id="station_datalist">
         <!-- Suggestions will be populated by JavaScript -->
       </ul>
@@ -43,11 +41,11 @@
           <input type="radio" name="color" value="custom" />
           <span>Custom</span>
         </label>
-        <input type="color" id="color" name="color" value="random" onchange="changeColor()" />
+        <input type="color" id="color" name="color" value="random" />
       </div>
       <br /><br />
       <label class="choice checkbox">
-        <input type="checkbox" id="generate-map" name="generate_map" onchange="toggleMapOptions();">
+        <input type="checkbox" id="generate-map" name="generate_map" />
         <span>Generate Map (very slow)</span>
       </label>
       <!-- only show this section if generate-map checkbox is checked -->
