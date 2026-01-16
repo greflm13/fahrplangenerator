@@ -164,7 +164,6 @@ body {
 .form input[type="number"]:focus,
 .form select:focus {
   outline: none;
-  border-color: var(--acc-color);
 }
 
 .form input[type="color"] {
@@ -251,8 +250,7 @@ body {
 }
 
 .choice input:focus + span::before {
-  outline: 0.2em solid var(--acc-color);
-  outline-offset: 0.15em;
+  outline: none;
 }
 
 .choice-group {
