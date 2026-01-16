@@ -230,17 +230,15 @@ def create_page(
 
 
 async def compute(
-    ourstop: list[HierarchyStop],
+    ourstops: list[HierarchyStop],
     stops: dict[str, Any],
     args,
     destinations: dict[str, dict[str, str]],
     loadingbars: bool = True,
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ):
-    logger.info("Computing stops")
-    ourstops = [stop.to_dict() for stop in ourstop]
     logger.info("Computing times")
-    stopids = [stop["stop_id"] for stop in ourstops]
+    stopids = [stop.stop_id for stop in ourstops]
     ourtimes = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
     logger.info("Computing trips")
     times = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids, columns=["trip_id"])
@@ -251,11 +249,6 @@ async def compute(
     logger.info("Computing routes")
     routeids = await db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["route_id"])
     ourroute = await db.get_in_filtered_data("routes", column="route_id", values=routeids)
-
-    if ourstops == []:
-        print(f'Stop "{ourstop}" not found!')
-        logger.error('Stop "%s" not found!', ourstop)
-        return
 
     selected_stop_times = utils.build_list_index(ourtimes, "trip_id")
     stop_times = await utils.build_stop_times_index([trip.trip_id for trip in ourtrips])
@@ -276,7 +269,7 @@ async def compute(
             time=selected_stop_times[trip.trip_id].departure_time[:-3],
             line=trip.route_id,
             dire=f"d{trip.direction_id}",
-            stop=ourstop[0].stop_name,
+            stop=ourstops[0].stop_name,
         )
         if calendar[trip.service_id].monday == "1":
             monset.add(data)
@@ -371,7 +364,7 @@ async def compute(
                 pages[line] = {}
             for k in dires.keys():
                 dest = destinations[line][k]
-                if dest != ourstop[0].stop_name:
+                if dest != ourstops[0].stop_name:
                     page = pages.get(line, {}).get(k, {})
                     if not isinstance(page, str):
                         page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
@@ -379,7 +372,7 @@ async def compute(
                     pages[line][k] = create_page(
                         selected_routes[line].route_short_name,
                         dest,
-                        ourstop[0].stop_name,
+                        ourstops[0].stop_name,
                         page,
                         mondict.get(line, {}).get(k, {}),
                         satdict.get(line, {}).get(k, {}),
@@ -392,9 +385,9 @@ async def compute(
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
                         pages[line][k + "map"] = await draw_map(
                             page=mappage,
-                            stop_name=ourstop[0].stop_name,
+                            stop_name=ourstops[0].stop_name,
                             logo=tmpfile,
-                            routes=await utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, [stop["stop_id"] for stop in ourstops]),
+                            routes=await utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, stopids),
                             color=color,
                             label_rotation=0,
                             tmpdir=tmpdir,
