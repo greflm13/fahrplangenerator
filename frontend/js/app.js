@@ -65,24 +65,28 @@ function fillSuggestion(event) {
 }
 
 function select(event) {
-  const stationInput = document.getElementById("station_name");
   const dataList = document.getElementsByTagName("li");
-  if (event.key == "ArrowDown") {
-    console.log(event.target);
-    console.log(stationInput);
-    console.log(event.target == stationInput);
-    if (event.target == stationInput) {
-      dataList[0].select = true;
-    } else {
-      dataList.forEach((item, idx) => {
-        if (item == event.target) {
-          dataList[0].select = false;
-          dataList[idx + 1].select = true;
-        }
-      });
+  const focus = document.querySelector(":focus");
+  let activeElement;
+  if (event.key == "ArrowDown" || event.key == "ArrowUp") {
+    dataList.forEach((item) => {
+      if (item == focus) {
+        activeElement = item;
+      }
+    });
+    if (event.key == "ArrowDown") {
+      if (activeElement == undefined) {
+        dataList[0].focus();
+      } else if (activeElement.nextElementSibling != null) {
+        activeElement.nextElementSibling.focus();
+      }
+    } else if (event.key == "ArrowUp") {
+      if (activeElement == undefined) {
+        dataList[0].focus();
+      } else if (activeElement.previousElementSibling != null) {
+        activeElement.previousElementSibling.focus();
+      }
     }
-  } else if (event.key == "ArrowUp") {
-    console.log(dataList);
   }
 }
 
