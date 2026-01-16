@@ -57,10 +57,10 @@ function changeColor() {
   document.documentElement.style.setProperty("--acc-color", color);
 }
 
-function fillSuggestion(station) {
+function fillSuggestion(event) {
   const stationInput = document.getElementById("station_name");
   const dataList = document.getElementById("station_datalist");
-  stationInput.value = station;
+  stationInput.value = event.target.innerHTML;
   dataList.style.display = "none";
 }
 
@@ -86,6 +86,10 @@ function select(event) {
   }
 }
 
+function debug(event) {
+  console.log(event.target);
+}
+
 async function fetchStations() {
   const response = await fetch("/api/stations");
   const stations = await response.json();
@@ -109,10 +113,8 @@ async function fetchSuggestions() {
     stations.stations.forEach((station) => {
       const li = document.createElement("li");
       li.innerText = station;
-      li.onclick = function () {
-        fillSuggestion(station);
-      };
-      li.addEventListener("keydown", select);
+      li.addEventListener("click", fillSuggestion);
+      li.addEventListener("mouseenter", debug);
       dataList.appendChild(li);
     });
     dataList.style.display = "block";
