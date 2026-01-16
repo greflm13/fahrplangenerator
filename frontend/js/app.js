@@ -65,9 +65,19 @@ function fillSuggestion(station) {
 }
 
 function select(event) {
+  const stationInput = document.getElementById("station_name");
   const dataList = document.getElementsByTagName("li");
   if (event.key == "ArrowDown") {
-    console.log(dataList);
+    if (event.target == stationInput) {
+      dataList[0].select = true;
+    } else {
+      dataList.forEach((item, idx) => {
+        if (item == event.target) {
+          dataList[0].select = false;
+          dataList[idx + 1].select = true;
+        }
+      });
+    }
   } else if (event.key == "ArrowUp") {
     console.log(dataList);
   }
