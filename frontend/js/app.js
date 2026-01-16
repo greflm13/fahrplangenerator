@@ -65,32 +65,24 @@ function fillSuggestion(event) {
 }
 
 function select(event) {
-  const dataList = [...document.getElementsByTagName("li")];
-  const focus = document.querySelector(":focus");
-  let activeElement;
-  if (event.key == "ArrowDown" || event.key == "ArrowUp") {
-    console.log("event!");
-    dataList.forEach((item) => {
-      if (item == focus) {
-        activeElement = item;
-      }
-    });
-    console.log(activeElement);
-    if (event.key == "ArrowDown") {
-      if (activeElement === undefined) {
-        dataList[0].focus();
-      } else if (activeElement.nextElementSibling != null) {
-        activeElement.nextElementSibling.focus();
-      }
-    } else if (event.key == "ArrowUp") {
-      if (activeElement === undefined) {
-        dataList[0].focus();
-      } else if (activeElement.previousElementSibling != null) {
-        activeElement.previousElementSibling.focus();
-      }
-    }
-    console.log(focus);
+  const li = list.querySelectorAll("li");
+
+  if (!["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) return;
+
+  if (event.key === "ArrowDown") {
+    currentIndex = Math.min(currentIndex + 1, li.length - 1);
   }
+
+  if (event.key === "ArrowUp") {
+    currentIndex = Math.max(currentIndex - 1, 0);
+  }
+
+  if (event.key === "Enter" && currentIndex >= 0) {
+    li[currentIndex].dispatchEvent(new Event("click"));
+    return;
+  }
+
+  li.forEach((el, i) => el.classList.toggle("active", i === currentIndex));
 }
 
 async function fetchStations() {
