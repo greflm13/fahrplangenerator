@@ -67,9 +67,9 @@ function fillSuggestion(station) {
 function select(event) {
   const dataList = document.getElementsByTagName("li");
   if (event.key == "ArrowDown") {
-    console.log(dataList)
+    console.log(dataList);
   } else if (event.key == "ArrowUp") {
-    console.log(dataList)
+    console.log(dataList);
   }
 }
 
@@ -160,7 +160,7 @@ function validateForm() {
   }
 }
 
-document.getElementById("schedule-form").addEventListener("submint", handleFormSubmit);
+document.getElementById("schedule-form").addEventListener("submit", handleFormSubmit);
 document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
 document.getElementById("station_name").addEventListener("input", fetchSuggestions);
 document.getElementById("station_name").addEventListener("keydown", select);
