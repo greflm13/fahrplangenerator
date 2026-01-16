@@ -65,7 +65,8 @@ function fillSuggestion(event) {
 }
 
 function select(event) {
-  const li = list.querySelectorAll("li");
+  const dataList = document.getElementById("station_datalist");
+  const li = dataList.querySelectorAll("li");
 
   if (!["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) return;
 
