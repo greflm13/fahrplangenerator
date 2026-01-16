@@ -68,12 +68,15 @@ function select(event) {
   const dataList = [...document.getElementsByTagName("li")];
   const focus = document.querySelector(":focus");
   let activeElement;
+  console.log(focus);
   if (event.key == "ArrowDown" || event.key == "ArrowUp") {
+    console.log("event!");
     dataList.forEach((item) => {
       if (item == focus) {
         activeElement = item;
       }
     });
+    console.log(activeElement);
     if (event.key == "ArrowDown") {
       if (activeElement == undefined) {
         dataList[0].focus();
@@ -88,10 +91,6 @@ function select(event) {
       }
     }
   }
-}
-
-function debug(event) {
-  console.log(event.target);
 }
 
 async function fetchStations() {
@@ -118,7 +117,6 @@ async function fetchSuggestions() {
       const li = document.createElement("li");
       li.innerText = station;
       li.addEventListener("click", fillSuggestion);
-      li.addEventListener("mouseenter", debug);
       dataList.appendChild(li);
     });
     dataList.style.display = "block";
