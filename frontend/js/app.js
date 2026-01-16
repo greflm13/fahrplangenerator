@@ -65,7 +65,7 @@ function fillSuggestion(event) {
 }
 
 function select(event) {
-  const dataList = document.getElementsByTagName("li");
+  const dataList = [...document.getElementsByTagName("li")];
   const focus = document.querySelector(":focus");
   let activeElement;
   if (event.key == "ArrowDown" || event.key == "ArrowUp") {
