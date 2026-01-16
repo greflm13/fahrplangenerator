@@ -65,10 +65,11 @@ function fillSuggestion(station) {
 }
 
 function select(event) {
+  const dataList = document.getElementsByTagName("li");
   if (event.key == "ArrowDown") {
-    console.log(event.target);
+    console.log(dataList)
   } else if (event.key == "ArrowUp") {
-    console.log(event.target);
+    console.log(dataList)
   }
 }
 
