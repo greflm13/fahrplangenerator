@@ -202,7 +202,8 @@ body {
 }
 
 .form ul li:hover,
-.form ul li:focus {
+.form ul li:focus,
+.form ul li.active {
   background: var(--acc-color);
   color: var(--text-color);
   cursor: pointer;
