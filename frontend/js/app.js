@@ -1,12 +1,11 @@
+let currentIndex = -1;
+
 function toggleMapOptions() {
   const mapOptions = document.getElementById("map-options");
-  if (document.getElementById("generate-map").checked) {
-    mapOptions.style.display = "block";
-    mapOptions.disabled = false;
-  } else {
-    mapOptions.style.display = "none";
-    mapOptions.disabled = true;
-  }
+  const enabled = document.getElementById("generate-map").checked;
+
+  mapOptions.style.display = enabled ? "block" : "none";
+  mapOptions.querySelectorAll("input, select, textarea, button").forEach((el) => (el.disabled = !enabled));
 }
 
 function isContrasting(color) {
@@ -32,16 +31,12 @@ function isVibrant(color) {
 
 function generateContrastingVibrantColor() {
   const chars = "0123456789abcdef";
-
-  while (true) {
+  for (;;) {
     let color = "#";
     for (let i = 0; i < 6; i++) {
       color += chars[Math.floor(Math.random() * chars.length)];
     }
-
-    if (isContrasting(color) && isVibrant(color)) {
-      return color;
-    }
+    if (isContrasting(color) && isVibrant(color)) return color;
   }
 }
 
@@ -57,33 +52,35 @@ function changeColor() {
   document.documentElement.style.setProperty("--acc-color", color);
 }
 
+function updateHighlight(listEl) {
+  const items = listEl.querySelectorAll("li");
+  items.forEach((el, i) => {
+    const active = i === currentIndex;
+    el.classList.toggle("active", active);
+    el.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  if (currentIndex >= 0 && items[currentIndex]) {
+    items[currentIndex].scrollIntoView({ block: "nearest" });
+  }
+}
+
+function clearSuggestions() {
+  const dataList = document.getElementById("station_datalist");
+  dataList.innerHTML = "";
+  dataList.style.display = "none";
+  currentIndex = -1;
+}
+
 function fillSuggestion(event) {
   const stationInput = document.getElementById("station_name");
   const dataList = document.getElementById("station_datalist");
-  stationInput.value = event.target.innerHTML;
-  dataList.style.display = "none";
-}
 
-function select(event) {
-  const dataList = document.getElementById("station_datalist");
-  const li = dataList.querySelectorAll("li");
+  const text = event.currentTarget.textContent;
+  stationInput.value = text;
 
-  if (!["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) return;
-
-  if (event.key === "ArrowDown") {
-    currentIndex = Math.min(currentIndex + 1, li.length - 1);
-  }
-
-  if (event.key === "ArrowUp") {
-    currentIndex = Math.max(currentIndex - 1, 0);
-  }
-
-  if (event.key === "Enter" && currentIndex >= 0) {
-    li[currentIndex].dispatchEvent(new Event("click"));
-    return;
-  }
-
-  li.forEach((el, i) => el.classList.toggle("active", i === currentIndex));
+  clearSuggestions();
+  stationInput.focus();
+  stationInput.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 async function fetchStations() {
@@ -93,26 +90,84 @@ async function fetchStations() {
 }
 
 async function fetchSuggestions() {
-  const stationInput = document.getElementById("station_name").value;
+  const inputEl = document.getElementById("station_name");
   const dataList = document.getElementById("station_datalist");
-  if (stationInput.length < 3) {
-    dataList.innerHTML = "";
-    dataList.style.display = "none";
+  const q = inputEl.value;
+
+  if (q.length < 3) {
+    clearSuggestions();
     return;
   }
-  const response = await fetch(`/api/stations?query=${encodeURIComponent(stationInput)}`);
+
+  const response = await fetch(`/api/stations?query=${encodeURIComponent(q)}`);
   const stations = await response.json();
+
   dataList.innerHTML = "";
+  dataList.setAttribute("role", "listbox");
+
   if (stations.total === 0) {
     dataList.style.display = "none";
-  } else {
-    stations.stations.forEach((station) => {
-      const li = document.createElement("li");
-      li.innerText = station;
-      li.addEventListener("click", fillSuggestion);
-      dataList.appendChild(li);
-    });
-    dataList.style.display = "block";
+    currentIndex = -1;
+    return;
+  }
+
+  stations.stations.forEach((station, i) => {
+    const li = document.createElement("li");
+    li.textContent = station;
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", "false");
+    li.addEventListener("mousedown", fillSuggestion);
+
+    dataList.appendChild(li);
+  });
+
+  dataList.style.display = "block";
+  currentIndex = -1;
+  updateHighlight(dataList);
+}
+
+function select(event) {
+  const dataList = document.getElementById("station_datalist");
+  const items = dataList.querySelectorAll("li");
+
+  if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) return;
+
+  const listVisible = dataList.style.display !== "none" && items.length > 0;
+
+  if (!listVisible) {
+    if (event.key === "ArrowDown") {
+      if (document.getElementById("station_name").value.length >= 3) {
+        fetchSuggestions();
+      }
+    }
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (event.key === "ArrowDown") {
+    currentIndex = Math.min(currentIndex + 1, items.length - 1);
+    updateHighlight(dataList);
+    return;
+  }
+
+  if (event.key === "ArrowUp") {
+    currentIndex = Math.max(currentIndex - 1, 0);
+    updateHighlight(dataList);
+    return;
+  }
+
+  if (event.key === "Enter") {
+    if (currentIndex >= 0) {
+      items[currentIndex].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }
+    return;
+  }
+
+  if (event.key === "Escape") {
+    clearSuggestions();
+    return;
   }
 }
 
@@ -123,16 +178,14 @@ async function fetchMapProviders() {
   providers.map_providers.forEach((provider) => {
     const option = document.createElement("option");
     option.value = provider;
-    option.text = provider;
+    option.textContent = provider;
     providerSelect.add(option);
   });
 }
 
 async function handleFormSubmit(event) {
   event.preventDefault();
-  if (!validateForm()) {
-    return;
-  }
+  if (!validateForm()) return;
 
   const formData = new FormData(document.getElementById("schedule-form"));
   // disable form after submit to prevent api spam
@@ -141,20 +194,22 @@ async function handleFormSubmit(event) {
   submitButton.disabled = true;
   loader.style.display = "flex";
 
-  const response = await fetch("/api/generate", {
-    method: "POST",
-    body: formData,
-  });
+  try {
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      body: formData,
+    });
 
-  submitButton.disabled = false;
-  loader.style.display = "none";
-
-  if (response.ok) {
-    const data = await response.json();
-    window.location.href = `/api/download?dl=${data.download}`;
-  } else {
-    const error = await response.json();
-    alert("Error generating timetable: " + error.detail);
+    if (response.ok) {
+      const data = await response.json();
+      window.location.href = `/api/download?dl=${data.download}`;
+    } else {
+      const error = await response.json();
+      alert("Error generating timetable: " + error.detail);
+    }
+  } finally {
+    submitButton.disabled = false;
+    loader.style.display = "none";
   }
 }
 
@@ -162,12 +217,16 @@ function validateForm() {
   const stationInput = document.getElementById("station_name");
   const stationName = stationInput.value;
 
+  if (!Array.isArray(window.stations)) {
+    console.warn("Stations not loaded yet; skipping strict validation.");
+    return true;
+  }
+
   if (!window.stations.includes(stationName)) {
     alert("Please enter a valid station.");
     return false;
-  } else {
-    return true;
   }
+  return true;
 }
 
 document.getElementById("schedule-form").addEventListener("submit", handleFormSubmit);
