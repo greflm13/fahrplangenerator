@@ -86,7 +86,7 @@ class FahrplanRequest(BaseModel):
     generate_map: bool = Field(default=False, description="Generate maps for routes")
     color: list = Field(default=["random"], description="Timetable color (or 'random')")
     map_provider: str = Field(default="BasemapAT", description="Map provider (BasemapAT, OPNVKarte, OSM, OSMDE, ORM, OTM, UN, SAT)")
-    map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution")
+    map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution", multiple_of=300, max_digits=4)
 
 
 class RootResponse(BaseModel):
@@ -191,7 +191,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
 
         global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS
         if STOPS is None or STOP_HIERARCHY is None or DESTINATIONS is None or STOP_ID_MAPPING is None:
-            raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
+            raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data.")
 
         stops = STOPS
         stop_hierarchy = STOP_HIERARCHY
@@ -231,6 +231,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         dl = filepath.decode("utf-8") + ":" + filename.decode("utf-8")
 
         if os.path.exists(args.output):
+            logger.info("Timetable already generated: %s", args.output)
             return JSONResponse(content={"message": "PDF generated", "download": dl})
 
         await compute(ourstop, stops, args, destinations, False, logger)
