@@ -44,7 +44,7 @@ async def cleanup_jobs():
                 if os.path.exists(job["path"]):
                     os.remove(job["path"])
                 JOBS.pop(dl, None)
-                logger.info("Cleaned up dl job %s", dl)
+                logger.info("Cleaned up job %s", dl)
         await asyncio.sleep(300)
 
 
@@ -54,6 +54,7 @@ async def run_compute_job(token: str, output_path: str, ourstop, stops, args, de
             await asyncio.to_thread(lambda: asyncio.run(compute(ourstop, stops, args, destinations, False, logger)))
         if os.path.exists(output_path):
             JOBS[token]["status"] = "done"
+            logger.info("Generated timetable: %s", output_path)
         else:
             JOBS[token]["status"] = "error"
     except Exception as e:
