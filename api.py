@@ -86,7 +86,7 @@ class FahrplanRequest(BaseModel):
     generate_map: bool = Field(default=False, description="Generate maps for routes")
     color: list = Field(default=["random"], description="Timetable color (or 'random')")
     map_provider: str = Field(default="BasemapAT", description="Map provider (BasemapAT, OPNVKarte, OSM, OSMDE, ORM, OTM, UN, SAT)")
-    map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution", multiple_of=300, max_digits=4)
+    map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution", multiple_of=150)
 
 
 class RootResponse(BaseModel):
