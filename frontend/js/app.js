@@ -207,10 +207,8 @@ async function pollForDownload(dl) {
 
       const a = document.createElement("a");
       a.href = url;
-      a.download = "fahrplan.pdf";
       document.body.appendChild(a);
       a.click();
-
       a.remove();
       window.URL.revokeObjectURL(url);
       break;
