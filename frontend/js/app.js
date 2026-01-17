@@ -203,6 +203,7 @@ async function pollForDownload(dl) {
     }
 
     if (res.status === 200) {
+      const data = await res.json();
       window.location.href = `/api/download?dl=${data.download}`;
       break;
     }
