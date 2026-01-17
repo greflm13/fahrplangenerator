@@ -260,8 +260,8 @@ async def draw_map(
 
         page_w, page_h = pagesize
 
-        margin_x = 25
-        margin_y = 30
+        margin_x = 50
+        margin_y = 60
 
         draw_w = page_w - 2 * margin_x
         draw_h = page_h - 2 * margin_y
