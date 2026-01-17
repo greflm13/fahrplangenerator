@@ -5,7 +5,9 @@ function toggleMapOptions() {
   const enabled = document.getElementById("generate-map").checked;
 
   mapOptions.style.display = enabled ? "block" : "none";
-  mapOptions.querySelectorAll("input, select, textarea, button").forEach((el) => (el.disabled = !enabled));
+  mapOptions
+    .querySelectorAll("input, select, textarea, button")
+    .forEach((el) => (el.disabled = !enabled));
 }
 
 function isContrasting(color) {
@@ -105,7 +107,10 @@ async function fetchSuggestions() {
   dataList.innerHTML = "";
   dataList.setAttribute("role", "listbox");
 
-  if (stations.total === 0 || (stations.total === 1 && stations.stations[0] === q)) {
+  if (
+    stations.total === 0 ||
+    (stations.total === 1 && stations.stations[0] === q)
+  ) {
     dataList.style.display = "none";
     currentIndex = -1;
     return;
@@ -160,7 +165,9 @@ function select(event) {
 
   if (event.key === "Enter") {
     if (currentIndex >= 0) {
-      items[currentIndex].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      items[currentIndex].dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true })
+      );
     }
     return;
   }
@@ -183,6 +190,38 @@ async function fetchMapProviders() {
   });
 }
 
+async function pollForDownload(dl) {
+  const pollInterval = 3000;
+
+  while (true) {
+    const res = await fetch(`/api/download?dl=${encodeURIComponent(dl)}`);
+
+    if (res.status === 202) {
+      await new Promise((r) => setTimeout(r, pollInterval));
+      continue;
+    }
+
+    if (res.status === 200) {
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "fahrplan.pdf";
+      document.body.appendChild(a);
+      a.click();
+
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      break;
+    }
+
+    const err = await res.json();
+    alert(err.detail || "Download failed");
+    break;
+  }
+}
+
 async function handleFormSubmit(event) {
   event.preventDefault();
   if (!validateForm()) return;
@@ -202,7 +241,7 @@ async function handleFormSubmit(event) {
 
     if (response.ok) {
       const data = await response.json();
-      window.location.href = `/api/download?dl=${data.download}`;
+      await pollForDownload(data.download);
     } else {
       const error = await response.json();
       alert("Error generating timetable: " + error.detail);
@@ -229,9 +268,15 @@ function validateForm() {
   return true;
 }
 
-document.getElementById("schedule-form").addEventListener("submit", handleFormSubmit);
-document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
-document.getElementById("station_name").addEventListener("input", fetchSuggestions);
+document
+  .getElementById("schedule-form")
+  .addEventListener("submit", handleFormSubmit);
+document
+  .getElementById("generate-map")
+  .addEventListener("change", toggleMapOptions);
+document
+  .getElementById("station_name")
+  .addEventListener("input", fetchSuggestions);
 document.getElementById("station_name").addEventListener("keydown", select);
 document.getElementById("color").addEventListener("change", changeColor);
 

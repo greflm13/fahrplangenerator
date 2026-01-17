@@ -2,7 +2,9 @@
 
 import os
 import re
+import time
 import base64
+import asyncio
 import logging
 import tempfile
 
@@ -27,12 +29,41 @@ STOP_ID_MAPPING = None
 STOPS = None
 DESTINATIONS = None
 TMPDIR = "/tmp"
+JOBS: dict[str, dict] = {}
+JOB_TTL = 3600
+
+
+async def cleanup_jobs():
+    while True:
+        now = time.time()
+        for dl, job in list(JOBS.items()):
+            if now - job["created"] > JOB_TTL:
+                if job.get("task"):
+                    job["task"].cancel()
+                if os.path.exists(job["path"]):
+                    os.remove(job["path"])
+                JOBS.pop(dl, None)
+                logger.info("Cleaned up dl job %s", dl)
+        await asyncio.sleep(300)
+
+
+async def run_compute_job(token: str, output_path: str, ourstop, stops, args, destinations, logger):
+    try:
+        await compute(ourstop, stops, args, destinations, False, logger)
+        if os.path.exists(output_path):
+            JOBS[token]["status"] = "done"
+        else:
+            JOBS[token]["status"] = "error"
+    except Exception as e:
+        logger.error("Job %s failed: %s", token, e)
+        JOBS[token]["status"] = "error"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager to load GTFS data at startup."""
     global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS, TMPDIR
+    cleanup_task = None
     try:
         stops = await db.get_table_data("stops")
         stop_hierarchy = await utils.build_stop_hierarchy()
@@ -56,11 +87,14 @@ async def lifespan(app: FastAPI):
 
         logger.info("Loaded GTFS data")
         logger.info("Temporary directory created at %s", TMPDIR)
+        cleanup_task = asyncio.create_task(cleanup_jobs())
     except Exception as e:
         logger.error("Error loading GTFS data at startup: %s", str(e))
 
     yield
 
+    if cleanup_task:
+        cleanup_task.cancel()
     if os.path.exists(TMPDIR):
         for filename in os.listdir(TMPDIR):
             file_path = os.path.join(TMPDIR, filename)
@@ -158,27 +192,31 @@ async def root():
 
 @app.get("/download", response_class=FileResponse)
 async def download_timetable(dl: str):
-    """Download a previously generated timetable PDF using a unique token."""
-    try:
-        if not dl:
-            raise HTTPException(status_code=400, detail="No download token provided")
+    job = JOBS.get(dl)
 
-        file = dl.split(":")
-        filepath = base64.b64decode(file[0]).decode("utf-8")
-        filename = base64.b64decode(file[1]).decode("utf-8")
-        if not filepath:
-            raise HTTPException(status_code=400, detail="Invalid download token")
+    if not job:
+        raise HTTPException(status_code=404, detail="Invalid or expired download token")
 
-        if not os.path.exists(filepath):
-            raise HTTPException(status_code=404, detail="Requested timetable not found")
+    age = time.time() - job["created"]
+    if age > JOB_TTL:
+        if job.get("task"):
+            job["task"].cancel()
+        if os.path.exists(job["path"]):
+            os.remove(job["path"])
+        JOBS.pop(dl, None)
+        raise HTTPException(status_code=410, detail="Download expired")
 
-        return FileResponse(path=filepath, filename=filename, media_type="application/pdf")
+    if job["status"] == "pending":
+        return JSONResponse(status_code=202, content={"status": "processing"})
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error downloading timetable: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Error downloading timetable: {str(e)}")
+    if job["status"] == "error":
+        JOBS.pop(dl, None)
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+    if not os.path.exists(job["path"]):
+        raise HTTPException(status_code=500, detail="File missing")
+
+    return FileResponse(path=job["path"], filename=job["filename"], media_type="application/pdf")
 
 
 @app.post("/generate")
@@ -233,7 +271,11 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         if os.path.exists(args.output):
             logger.info("Timetable already generated: %s", args.output)
             return JSONResponse(content={"message": "PDF generated", "download": dl})
+        JOBS[dl] = {"path": args.output, "filename": os.path.basename(outfile), "created": time.time(), "status": "pending"}
 
+        JOBS[dl]["task"] = asyncio.create_task(run_compute_job(dl, args.output, ourstop, stops, args, destinations, logger))
+
+        return JSONResponse(status_code=202, content={"message": "PDF generation started", "download": dl, "status": "pending"})
         await compute(ourstop, stops, args, destinations, False, logger)
 
         if not os.path.exists(args.output):
