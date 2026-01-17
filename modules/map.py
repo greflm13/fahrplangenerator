@@ -36,7 +36,6 @@ MAP_PROVIDERS = {
     "OSMDE": providers.OpenStreetMap.DE,
     "ORM": providers.OpenRailwayMap,
     "OTM": providers.OpenTopoMap,
-    "UN": providers.UN.ClearMap,
     "SAT": providers.Esri.WorldImagery,
 }
 
