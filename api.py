@@ -221,7 +221,17 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
             safe_station = "fahrplan"
         outfile = os.path.join(TMPDIR, f"{safe_station}.pdf")
 
-        _, args.output = tempfile.mkstemp(suffix=".pdf", prefix=f"{safe_station}_", dir=TMPDIR)
+        if request.generate_map and request.color[0] == "random":
+            args.output = os.path.join(TMPDIR, f"{safe_station}_{request.map_provider}_{request.map_dpi}.pdf")
+        else:
+            _, args.output = tempfile.mkstemp(suffix=".pdf", prefix=f"{safe_station}_", dir=TMPDIR)
+
+        filepath = base64.b64encode(bytes(args.output, "utf-8"))
+        filename = base64.b64encode(bytes(os.path.basename(outfile), "utf-8"))
+        dl = filepath.decode("utf-8") + ":" + filename.decode("utf-8")
+
+        if os.path.exists(args.output):
+            return JSONResponse(content={"message": "PDF generated", "download": dl})
 
         await compute(ourstop, stops, args, destinations, False, logger)
 
@@ -229,9 +239,6 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
             raise HTTPException(status_code=500, detail="Failed to generate PDF file")
 
         logger.info("Timetable generated: %s", args.output)
-        filepath = base64.b64encode(bytes(args.output, "utf-8"))
-        filename = base64.b64encode(bytes(os.path.basename(outfile), "utf-8"))
-        dl = filepath.decode("utf-8") + ":" + filename.decode("utf-8")
         return JSONResponse(content={"message": "PDF generated", "download": dl})
 
     except HTTPException:
