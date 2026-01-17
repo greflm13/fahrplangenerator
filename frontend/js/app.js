@@ -6,9 +6,7 @@ function toggleMapOptions() {
   fetchMapProviders();
 
   mapOptions.style.display = enabled ? "block" : "none";
-  mapOptions
-    .querySelectorAll("input, select, textarea, button")
-    .forEach((el) => (el.disabled = !enabled));
+  mapOptions.querySelectorAll("input, select, textarea, button").forEach((el) => (el.disabled = !enabled));
 }
 
 function isContrasting(color) {
@@ -108,10 +106,7 @@ async function fetchSuggestions() {
   dataList.innerHTML = "";
   dataList.setAttribute("role", "listbox");
 
-  if (
-    stations.total === 0 ||
-    (stations.total === 1 && stations.stations[0] === q)
-  ) {
+  if (stations.total === 0 || (stations.total === 1 && stations.stations[0] === q)) {
     dataList.style.display = "none";
     currentIndex = -1;
     return;
@@ -166,9 +161,7 @@ function select(event) {
 
   if (event.key === "Enter") {
     if (currentIndex >= 0) {
-      items[currentIndex].dispatchEvent(
-        new MouseEvent("mousedown", { bubbles: true })
-      );
+      items[currentIndex].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     }
     return;
   }
@@ -179,10 +172,19 @@ function select(event) {
   }
 }
 
+function removeOptions(selectElement) {
+  var i,
+    L = selectElement.options.length - 1;
+  for (i = L; i >= 0; i--) {
+    selectElement.remove(i);
+  }
+}
+
 async function fetchMapProviders() {
   const response = await fetch("/api/map-providers");
   const providers = await response.json();
   const providerSelect = document.getElementById("map_provider");
+  removeOptions(providerSelect);
   providers.map_providers.forEach((provider) => {
     const option = document.createElement("option");
     option.value = provider;
@@ -260,15 +262,9 @@ function validateForm() {
   return true;
 }
 
-document
-  .getElementById("schedule-form")
-  .addEventListener("submit", handleFormSubmit);
-document
-  .getElementById("generate-map")
-  .addEventListener("change", toggleMapOptions);
-document
-  .getElementById("station_name")
-  .addEventListener("input", fetchSuggestions);
+document.getElementById("schedule-form").addEventListener("submit", handleFormSubmit);
+document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
+document.getElementById("station_name").addEventListener("input", fetchSuggestions);
 document.getElementById("station_name").addEventListener("keydown", select);
 document.getElementById("color").addEventListener("change", changeColor);
 

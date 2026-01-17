@@ -54,9 +54,10 @@ async def run_compute_job(token: str, output_path: str, ourstop, stops, args, de
             await asyncio.to_thread(lambda: asyncio.run(compute(ourstop, stops, args, destinations, False, logger)))
         if os.path.exists(output_path):
             JOBS[token]["status"] = "done"
-            logger.info("Generated timetable: %s", output_path)
+            logger.info("Timetable generated: %s", output_path)
         else:
             JOBS[token]["status"] = "error"
+            logger.error("Error generating timetable: %s", output_path)
     except Exception as e:
         logger.error("Job %s failed: %s", token, e)
         JOBS[token]["status"] = "error"
