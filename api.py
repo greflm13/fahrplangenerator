@@ -31,6 +31,7 @@ DESTINATIONS = None
 TMPDIR = "/tmp"
 JOBS: dict[str, dict] = {}
 JOB_TTL = 3600
+COMPUTE_SEMAPHORE = asyncio.Semaphore(2)
 
 
 async def cleanup_jobs():
@@ -49,7 +50,8 @@ async def cleanup_jobs():
 
 async def run_compute_job(token: str, output_path: str, ourstop, stops, args, destinations, logger):
     try:
-        await compute(ourstop, stops, args, destinations, False, logger)
+        async with COMPUTE_SEMAPHORE:
+            await asyncio.to_thread(compute, ourstop, stops, args, destinations, False, logger)
         if os.path.exists(output_path):
             JOBS[token]["status"] = "done"
         else:
