@@ -3,6 +3,7 @@ let currentIndex = -1;
 function toggleMapOptions() {
   const mapOptions = document.getElementById("map-options");
   const enabled = document.getElementById("generate-map").checked;
+  fetchMapProviders();
 
   mapOptions.style.display = enabled ? "block" : "none";
   mapOptions
