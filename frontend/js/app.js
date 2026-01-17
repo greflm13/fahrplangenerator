@@ -194,7 +194,7 @@ async function pollForDownload(dl) {
   const pollInterval = 3000;
 
   while (true) {
-    const res = await fetch(`/api/download?dl=${encodeURIComponent(dl)}`);
+    const res = await fetch(`/api/status?dl=${encodeURIComponent(dl)}`);
 
     if (res.status === 202) {
       await new Promise((r) => setTimeout(r, pollInterval));
@@ -202,15 +202,7 @@ async function pollForDownload(dl) {
     }
 
     if (res.status === 200) {
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      window.location.href = `/api/download?dl=${data.download}`;
       break;
     }
 

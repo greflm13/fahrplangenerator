@@ -237,16 +237,16 @@ async def compute(
     loadingbars: bool = True,
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ):
-    logger.info("Computing times")
+    logger.info("Computing times for %s", ourstops[0].stop_name)
     stopids = [stop.stop_id for stop in ourstops]
     ourtimes = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
-    logger.info("Computing trips")
+    logger.info("Computing trips for %s", ourstops[0].stop_name)
     times = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids, columns=["trip_id"])
     ourtrips = await db.get_in_filtered_data("trips", column="trip_id", values=times)
-    logger.info("Computing services")
+    logger.info("Computing services for %s", ourstops[0].stop_name)
     services = await db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["service_id"])
     ourservs = await db.get_in_filtered_data("calendar", column="service_id", values=services)
-    logger.info("Computing routes")
+    logger.info("Computing routes for %s", ourstops[0].stop_name)
     routeids = await db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["route_id"])
     ourroute = await db.get_in_filtered_data("routes", column="route_id", values=routeids)
 
@@ -331,7 +331,7 @@ async def compute(
 
     if args.logo:
         try:
-            logger.info("Getting logo")
+            logger.info("Getting logo for %s", ourstops[0].stop_name)
             res = requests.get("https://files.sorogon.eu/logo.png")
             tmpfile = tempfile.NamedTemporaryFile(suffix=".png")
             tmpfile.write(res.content)
@@ -368,7 +368,7 @@ async def compute(
                     page = pages.get(line, {}).get(k, {})
                     if not isinstance(page, str):
                         page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
-                    logger.info("Creating page")
+                    logger.info("Creating page for %s", ourstops[0].stop_name)
                     pages[line][k] = create_page(
                         selected_routes[line].route_short_name,
                         dest,
@@ -381,7 +381,7 @@ async def compute(
                         tmpfile,
                     )
                     if args.map:
-                        logger.info("Drawing map")
+                        logger.info("Drawing map for %s", ourstops[0].stop_name)
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
                         pages[line][k + "map"] = await draw_map(
                             page=mappage,

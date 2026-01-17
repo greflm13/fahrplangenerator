@@ -221,6 +221,35 @@ async def download_timetable(dl: str):
     return FileResponse(path=job["path"], filename=job["filename"], media_type="application/pdf")
 
 
+@app.get("/status")
+async def generating_status(dl: str):
+    job = JOBS.get(dl)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Invalid or expired download token")
+
+    age = time.time() - job["created"]
+    if age > JOB_TTL:
+        if job.get("task"):
+            job["task"].cancel()
+        if os.path.exists(job["path"]):
+            os.remove(job["path"])
+        JOBS.pop(dl, None)
+        raise HTTPException(status_code=410, detail="Download expired")
+
+    if job["status"] == "pending":
+        return JSONResponse(status_code=202, content={"status": "processing"})
+
+    if job["status"] == "error":
+        JOBS.pop(dl, None)
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+    if not os.path.exists(job["path"]):
+        raise HTTPException(status_code=500, detail="File missing")
+
+    return JSONResponse(content={"message": "PDF generation finished", "download": dl, "status": "done"})
+
+
 @app.post("/generate")
 async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
     """Generate a transit timetable PDF for the given station."""
