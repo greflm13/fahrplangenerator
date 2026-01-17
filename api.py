@@ -259,7 +259,6 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         safe_station = safe_station.replace(os.path.sep, "_")
         if not safe_station:
             safe_station = "fahrplan"
-        outfile = os.path.join(TMPDIR, f"{safe_station}.pdf")
 
         if request.generate_map and request.color[0] == "random":
             args.output = os.path.join(TMPDIR, f"{safe_station}_{request.map_provider}_{request.map_dpi}.pdf")
@@ -267,7 +266,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
             _, args.output = tempfile.mkstemp(suffix=".pdf", prefix=f"{safe_station}_", dir=TMPDIR)
 
         filepath = base64.b64encode(bytes(args.output, "utf-8"))
-        filename = base64.b64encode(bytes(os.path.basename(outfile), "utf-8"))
+        filename = base64.b64encode(bytes(f"{safe_station}.pdf", "utf-8"))
         dl = filepath.decode("utf-8") + ":" + filename.decode("utf-8")
 
         job = JOBS.get(dl)
@@ -280,7 +279,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
                 logger.info("Job already completed: %s", args.output)
                 return JSONResponse(status_code=200, content={"message": "PDF already generated", "download": dl, "status": "done"})
 
-        JOBS[dl] = {"path": args.output, "filename": os.path.basename(outfile), "created": time.time(), "status": "pending"}
+        JOBS[dl] = {"path": args.output, "filename": f"{safe_station}.pdf", "created": time.time(), "status": "pending"}
 
         JOBS[dl]["task"] = asyncio.create_task(run_compute_job(dl, args.output, ourstop, stops, args, destinations, logger))
 
