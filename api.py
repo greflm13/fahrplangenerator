@@ -268,21 +268,21 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         filename = base64.b64encode(bytes(os.path.basename(outfile), "utf-8"))
         dl = filepath.decode("utf-8") + ":" + filename.decode("utf-8")
 
-        if os.path.exists(args.output):
-            logger.info("Timetable already generated: %s", args.output)
-            return JSONResponse(content={"message": "PDF generated", "download": dl})
+        job = JOBS.get(dl)
+        if job:
+            if job["status"] == "pending":
+                logger.info("Job already running: %s", args.output)
+                return JSONResponse(status_code=202, content={"message": "PDF generation in progress", "download": dl, "status": "pending"})
+
+            if job["status"] == "done":
+                logger.info("Job already completed: %s", args.output)
+                return JSONResponse(status_code=200, content={"message": "PDF already generated", "download": dl, "status": "done"})
+
         JOBS[dl] = {"path": args.output, "filename": os.path.basename(outfile), "created": time.time(), "status": "pending"}
 
         JOBS[dl]["task"] = asyncio.create_task(run_compute_job(dl, args.output, ourstop, stops, args, destinations, logger))
 
         return JSONResponse(status_code=202, content={"message": "PDF generation started", "download": dl, "status": "pending"})
-        await compute(ourstop, stops, args, destinations, False, logger)
-
-        if not os.path.exists(args.output):
-            raise HTTPException(status_code=500, detail="Failed to generate PDF file")
-
-        logger.info("Timetable generated: %s", args.output)
-        return JSONResponse(content={"message": "PDF generated", "download": dl})
 
     except HTTPException:
         raise
