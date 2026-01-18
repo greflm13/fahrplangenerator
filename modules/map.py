@@ -70,7 +70,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
         px_span = abs(px[0] - p0[0])
         py_span = abs(py[1] - p0[1])
         diag = math.hypot(px_span, py_span)
-        mutation_scale = int(max(min_size, min(max_size, max(5, diag * 0.015))))
+        mutation_scale = int(max(min_size, min(max_size, max(15, diag * 0.015))))
 
         def _interp(pA, pB, t: float):
             return (pA[0] + (pB[0] - pA[0]) * t, pA[1] + (pB[1] - pA[1]) * t)

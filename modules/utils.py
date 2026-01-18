@@ -49,7 +49,11 @@ async def build_shapedict(shape_ids: List[str]) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     shapedict: Dict[str, List] = defaultdict(list)
     async for shapeline in await get_in_filtered_data_iter("shapes", column="shape_id", values=shape_ids):
-        shapedict[shapeline.shape_id].append(Point(float(shapeline.shape_pt_lon), float(shapeline.shape_pt_lat), float(shapeline.shape_dist_traveled)))
+        lon = float(shapeline.shape_pt_lon)
+        lat = float(shapeline.shape_pt_lat)
+        z = float(shapeline.shape_dist_traveled)
+        point = Point(lon, lat, z)
+        shapedict[shapeline.shape_id].append(point)
 
     return dict(shapedict)
 
@@ -75,14 +79,7 @@ async def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
     return idx
 
 
-async def prepare_linedraw_info(
-    stop_times: Dict[str, List],
-    trips: Iterable,
-    stops: Dict[str, Any],
-    line,
-    direction,
-    ourstop: List[str],
-):
+async def prepare_linedraw_info(stop_times: Dict[str, List], trips: Iterable, stops: Dict[str, Any], line, direction, ourstop: List[str]):
     """Prepare line drawing information for selected shapes."""
     shapes: Set[Shape] = set()
     stop_points: Set[Tuple] = set()
