@@ -116,7 +116,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
                 spa = ax.transData.transform(pa0)
                 spb = ax.transData.transform(pb0)
                 seg_len_px = math.hypot(spb[0] - spa[0], spb[1] - spa[1])
-                if seg_len_px < 5:
+                if seg_len_px < 2.5:
                     continue
                 local_target = target - cum[seg_idx]
                 t = local_target / seg_len
