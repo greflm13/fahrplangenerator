@@ -44,7 +44,7 @@ async def cleanup_jobs():
                 if os.path.exists(job["path"]):
                     os.remove(job["path"])
                 JOBS.pop(dl, None)
-                logger.info("Cleaned up job %s", dl)
+                logger.info("Cleaned up job %s, %s", dl, job["path"])
         await asyncio.sleep(300)
 
 
@@ -69,6 +69,7 @@ async def lifespan(app: FastAPI):
     global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS, TMPDIR
     cleanup_task = None
     try:
+        logger.info("Loading GTFS data")
         stops = await db.get_table_data("stops")
         stop_hierarchy = await utils.build_stop_hierarchy()
         stop_hierarchy = await utils.query_stop_names(stop_hierarchy, loadingbars=False)
