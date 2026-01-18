@@ -97,7 +97,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
             p1 = ax.transData.transform((xmax, ymax))
             map_diag_px = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
 
-            n_arrows = max(3, int(map_diag_px / 150))
+            n_arrows = max(3, int(map_diag_px / 50))
 
             for k in range(1, n_arrows + 1):
                 target = total * k / (n_arrows + 1)
