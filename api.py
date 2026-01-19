@@ -32,6 +32,8 @@ TMPDIR = "/tmp"
 JOBS: dict[str, dict] = {}
 JOB_TTL = 3600
 
+ZOOM_MODIFIERS = {150: 0, 300: 0, 600: 1, 1200: 2}
+
 
 async def cleanup_jobs():
     while True:
@@ -47,9 +49,9 @@ async def cleanup_jobs():
         await asyncio.sleep(300)
 
 
-async def run_compute_job(token: str, output_path: str, ourstop, stops, args, destinations, logger):
+async def run_compute_job(token: str, output_path: str, ourstop, stops, args, destinations, logger, zoom_modifier):
     try:
-        await asyncio.to_thread(lambda: asyncio.run(compute(ourstop, stops, args, destinations, False, logger)))
+        await asyncio.to_thread(lambda: asyncio.run(compute(ourstop, stops, args, destinations, loadingbars=False, zoom_modifier=zoom_modifier, logger=logger)))
         if os.path.exists(output_path):
             JOBS[token]["status"] = "done"
             JOBS[token]["created"] = time.time()
@@ -124,7 +126,7 @@ class FahrplanRequest(BaseModel):
     generate_map: bool = Field(default=False, description="Generate maps for routes")
     color: list = Field(default=["random"], description="Timetable color (or 'random')")
     map_provider: str = Field(default="BasemapAT", description="Map provider (BasemapAT, OPNVKarte, OSM, OSMDE, ORM, OTM, UN, SAT)")
-    map_dpi: Optional[int] = Field(default=None, description="Map DPI resolution", multiple_of=150)
+    map_dpi: int = Field(default=300, description="Map DPI resolution", multiple_of=150)
 
 
 class RootResponse(BaseModel):
@@ -167,7 +169,7 @@ class Info(BaseModel):
 class Args:
     """Simple class to mimic argparse Namespace"""
 
-    def __init__(self, generate_map: bool = False, color: str = "random", map_provider: str = "BasemapAT", map_dpi: Optional[int] = None):
+    def __init__(self, generate_map: bool = False, color: str = "random", map_provider: str = "BasemapAT", map_dpi: int = 300):
         self.input = []
         self.color = color
         self.output = "fahrplan.pdf"
@@ -288,6 +290,8 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
 
         logger.info("Generating timetable for %s", request.station_name)
 
+        zoom_modifier = ZOOM_MODIFIERS.get(args.map_dpi)
+
         safe_station = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", request.station_name).strip()
         safe_station = safe_station.replace(os.path.sep, "_")
         if not safe_station:
@@ -316,7 +320,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
 
         JOBS[dl] = {"path": args.output, "filename": f"{safe_station}.pdf", "created": time.time(), "status": "pending"}
 
-        JOBS[dl]["task"] = asyncio.create_task(run_compute_job(dl, args.output, ourstop, stops, args, destinations, logger))
+        JOBS[dl]["task"] = asyncio.create_task(run_compute_job(dl, args.output, ourstop, stops, args, destinations, logger, zoom_modifier))
 
         return JSONResponse(status_code=202, content={"message": "PDF generation started", "download": dl, "status": "pending"})
 

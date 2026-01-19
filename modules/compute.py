@@ -235,6 +235,7 @@ async def compute(
     args,
     destinations: dict[str, dict[str, str]],
     loadingbars: bool = True,
+    zoom_modifier=0,
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ):
     logger.info("Computing times for %s", ourstops[0].stop_name)
@@ -393,6 +394,7 @@ async def compute(
                             tmpdir=tmpdir,
                             map_provider=args.map_provider,
                             dpi=args.map_dpi,
+                            zoom_modifier=zoom_modifier
                         )
 
         pagelst: list[str] = []

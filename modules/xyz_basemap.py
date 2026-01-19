@@ -59,11 +59,7 @@ def get_tile_scale(provider: TileProvider) -> int:
     return 1
 
 
-def auto_zoom(
-    bounds_wgs84: Tuple[float, float, float, float],
-    axis_pixel_size: Tuple[int, int],
-    provider: TileProvider,
-) -> int:
+def auto_zoom(bounds_wgs84: Tuple[float, float, float, float], axis_pixel_size: Tuple[int, int], provider: TileProvider, zoom_modifier=0) -> int:
     xmin, xmax, ymin, ymax = bounds_wgs84
     width_px, height_px = axis_pixel_size
 
@@ -81,7 +77,7 @@ def auto_zoom(
     for z in range(zmin, zmax + 1):
         tile_res = WEB_MERCATOR_EXTENT / (TILE_SIZE * 2**z)
         if tile_res <= required_res:
-            return z
+            return min(z + zoom_modifier, zmax)
 
     return zmin
 
@@ -196,6 +192,7 @@ async def render_basemap(
     provider: TileProvider,
     cache_dir: str,
     show_attribution: bool = True,
+    zoom_modifier=0,
     max_workers=min(8, os.cpu_count() * 2),  # type: ignore
 ) -> None:
     xmin, xmax, ymin, ymax = extends
@@ -209,11 +206,7 @@ async def render_basemap(
         width_px = int(bbox.width * fig.dpi)
         height_px = int(bbox.height * fig.dpi)
 
-        zoom = auto_zoom(
-            bounds_wgs84=(lon_min, lon_max, lat_min, lat_max),
-            axis_pixel_size=(width_px, height_px),
-            provider=provider,
-        )
+        zoom = auto_zoom(bounds_wgs84=(lon_min, lon_max, lat_min, lat_max), axis_pixel_size=(width_px, height_px), provider=provider, zoom_modifier=zoom_modifier)
 
     cache = TileCache(cache_dir)
 

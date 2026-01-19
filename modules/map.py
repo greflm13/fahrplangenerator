@@ -173,6 +173,7 @@ async def draw_map(
     map_provider: str = "BasemapAT",
     dpi: int = 600,
     padding: int = 15,
+    zoom_modifier=0,
     tmpdir: str = tempfile.gettempdir(),
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ) -> str | None:
@@ -254,7 +255,14 @@ async def draw_map(
     zoom_param = zoom if zoom >= 0 else None
     try:
         logger.info("Adding basemap for %s", stop_name)
-        await render_basemap(ax=ax, extends=(xmin, xmax, ymin, ymax), zoom=zoom_param, provider=get_provider_source(map_provider), cache_dir=os.path.join(SCRIPTDIR, "__pycache__"))
+        await render_basemap(
+            ax=ax,
+            extends=(xmin, xmax, ymin, ymax),
+            zoom=zoom_param,
+            provider=get_provider_source(map_provider),
+            cache_dir=os.path.join(SCRIPTDIR, "__pycache__"),
+            zoom_modifier=zoom_modifier,
+        )
         logger.info("Added basemap for %s", stop_name)
     except Exception as exc:
         logger.warning("Failed to add basemap: %s", exc)
