@@ -31,7 +31,7 @@ DESTINATIONS = None
 TMPDIR = "/tmp"
 JOBS: dict[str, dict] = {}
 JOB_TTL = 3600
-COMPUTE_SEMAPHORE = asyncio.Semaphore(2)
+COMPUTE_SEMAPHORE = asyncio.Semaphore(4)
 
 
 async def cleanup_jobs():
