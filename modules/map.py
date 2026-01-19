@@ -176,9 +176,9 @@ async def draw_map(
     tmpdir: str = tempfile.gettempdir(),
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ) -> str | None:
-    fig = Figure(figsize=(10, 10), dpi=dpi)
+    fig = Figure(figsize=(10, 10))
     canvas = FigureCanvasAgg(fig)
-    ax = fig.add_subplot(111)
+    ax = fig.add_subplot()
 
     projected_geoms = []
     logger.info("Plotting routes for %s", stop_name)
@@ -238,14 +238,14 @@ async def draw_map(
     try:
         logger.info("Plotting arrows on route for %s", stop_name)
         add_direction_arrows(ax, projected_geoms, arrow_color=color)
-        logger.info("Plotted arrows on route")
+        logger.info("Plotted arrows on route for %s", stop_name)
     except Exception as exc:
         logger.warning("Exception while plotting arrows: %s", exc)
 
     try:
         logger.info("Plotting stops on route for %s", stop_name)
         n = plot_stops_on_ax(ax, routes["points"], line_color=color, endstops=routes["endstops"], label_fontsize=label_fontsize, label_rotation=label_rotation)
-        logger.info("Plotted %d stops for route", n)
+        logger.info("Plotted %d stops on route for %s", n, stop_name)
     except Exception as exc:
         logger.warning("Exception while plotting stops: %s", exc)
 

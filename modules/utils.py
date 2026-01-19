@@ -12,7 +12,7 @@ import pandas as pd
 from svglib.svglib import Drawing
 from geopy.geocoders import Photon
 from pypdf import PdfReader, PdfWriter
-from shapely.geometry import shape, Point
+from shapely.geometry import Point, LineString
 
 from modules.datatypes import HierarchyStop, Shape, Stop, Routedata
 from modules.db import update_location_cache, get_table_data, get_most_frequent_values, get_in_filtered_data_iter
@@ -48,9 +48,10 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
 async def build_shapedict(shape_ids: List[str]) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
     logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
-    logger.info("Building shapedict", extra={"shapes": shape_ids})
     shapedict: Dict[str, List] = defaultdict(list)
-    async for shapeline in await get_in_filtered_data_iter("shapes", column="shape_id", values=shape_ids):
+    shapeids = list(set(shape_ids))
+    logger.info("Building shapedict", extra={"shapes": shapeids})
+    async for shapeline in await get_in_filtered_data_iter("shapes", column="shape_id", values=shapeids):
         lon = float(shapeline.shape_pt_lon)
         lat = float(shapeline.shape_pt_lat)
         z = float(shapeline.shape_dist_traveled)
@@ -90,7 +91,7 @@ async def prepare_linedraw_info(stop_times: Dict[str, List], trips: Iterable, st
         if trip.route_id == line and "d" + trip.direction_id == direction:
             if trip.shape_id != "":
                 shapes.add(Shape(trip.shape_id, trip.trip_id))
-    shapedict = await build_shapedict(list(set([shap.shapeid for shap in shapes])))
+    shapedict = await build_shapedict([shap.shapeid for shap in shapes])
     linedrawinfo = {"shapes": [], "points": [], "endstops": []}
     for shap in shapes:
         times = stop_times[shap.tripid]
@@ -102,19 +103,17 @@ async def prepare_linedraw_info(stop_times: Dict[str, List], trips: Iterable, st
                     if point.z == shape_dist_traveled:
                         geo = geometry[geoidx:]
                         tim = times[timeidx:]
-                        stop_points.update(
-                            [
-                                (
-                                    Point(float(stops[stop.stop_id].stop_lon), float(stops[stop.stop_id].stop_lat)),
-                                    Stop(stop.stop_id, await get_stop_name(stop.stop_id)),
-                                )
-                                for stop in tim
-                            ]
-                        )
+                        for stop in tim:
+                            x = float(stops[stop.stop_id].stop_lon)
+                            y = float(stops[stop.stop_id].stop_lat)
+                            point = Point(x, y)
+                            stop = Stop(stop.stop_id, await get_stop_name(stop.stop_id))
+                            stop_points.add((point, stop))
                         if len(geo) != 1:
-                            linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
+                            linedrawinfo["shapes"].append({"geometry": LineString(geo)})
                             endstop = stops[times[-1].stop_id]
                             end_stop_names.add(await get_stop_name(endstop.stop_id))
+                        break
     linedrawinfo["points"] = list(stop_points)
     linedrawinfo["endstops"] = list(end_stop_names)
     return linedrawinfo
