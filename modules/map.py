@@ -10,6 +10,7 @@ import geopandas as gpd
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
 
+from pyproj import Transformer
 from matplotlib.axes import Axes
 from shapely.geometry import Point
 from adjustText import adjust_text
@@ -19,7 +20,9 @@ from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
 from matplotlib.patches import FancyArrowPatch
 from xyzservices import TileProvider, providers
+from shapely.ops import transform as shp_transform
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+
 
 from modules.xyz_basemap import render_basemap
 
@@ -180,13 +183,25 @@ async def draw_map(
     canvas = FigureCanvasAgg(fig)
     ax = fig.add_subplot(111)
 
+    def plot_geom(ax, geom, color):
+        if geom.geom_type == "LineString":
+            xs, ys = geom.xy
+            ax.plot(xs, ys, color=color, linewidth=2)
+        else:
+            for part in geom.geoms:
+                xs, ys = part.xy
+                ax.plot(xs, ys, color=color, linewidth=2)
+
     projected_geoms = []
+    proj = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True).transform
+
+    logger.info("Plotting routes for %s", stop_name)
     for route in routes["shapes"]:
         geom = route["geometry"]
-        logger.info("Plotting shape for %s", stop_name)
-        gdf = gpd.GeoDataFrame({"geometry": [geom]}, crs="EPSG:4326").to_crs("EPSG:3857")
-        projected_geoms.append(gdf.geometry.iloc[0])
-        gdf.plot(ax=ax, facecolor="none", edgecolor=color, linewidth=2)
+        geom3857 = shp_transform(proj, geom)
+        projected_geoms.append(geom3857)
+
+        plot_geom(ax, geom3857, color)
 
     if not projected_geoms:
         logger.info("No routes to plot on map")
@@ -236,14 +251,16 @@ async def draw_map(
     ax.set_axis_off()
 
     try:
+        logger.info("Plotting arrows on route for %s", stop_name)
         add_direction_arrows(ax, projected_geoms, arrow_color=color)
-        logger.info("Plotted arrows on route")
+        logger.info("Plotted arrows on route for %s", stop_name)
     except Exception as exc:
         logger.warning("Exception while plotting arrows: %s", exc)
 
     try:
+        logger.info("Plotting stops on route for %s", stop_name)
         n = plot_stops_on_ax(ax, routes["points"], line_color=color, endstops=routes["endstops"], label_fontsize=label_fontsize, label_rotation=label_rotation)
-        logger.info("Plotted %d stops for route", n)
+        logger.info("Plotted %d stops for route for %s", n, stop_name)
     except Exception as exc:
         logger.warning("Exception while plotting stops: %s", exc)
 
