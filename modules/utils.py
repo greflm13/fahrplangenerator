@@ -96,10 +96,10 @@ async def prepare_linedraw_info(stop_times: Dict[str, List], trips: Iterable, st
         times = stop_times[shap.tripid]
         for timeidx, time in enumerate(times):
             if time.stop_id in ourstop:
-                shape_dist_traveled = time.shape_dist_traveled
+                shape_dist_traveled = float(time.shape_dist_traveled)
                 geometry = shapedict[shap.shapeid]
                 for geoidx, point in enumerate(geometry):
-                    if point.z == float(shape_dist_traveled):
+                    if point.z == shape_dist_traveled:
                         geo = geometry[geoidx:]
                         tim = times[timeidx:]
                         stop_points.update(
@@ -113,8 +113,8 @@ async def prepare_linedraw_info(stop_times: Dict[str, List], trips: Iterable, st
                         )
                         if len(geo) != 1:
                             linedrawinfo["shapes"].append({"geometry": shape({"type": "LineString", "coordinates": geo})})
-                        endstop = stops[times[-1].stop_id]
-                        end_stop_names.add(await get_stop_name(endstop.stop_id))
+                            endstop = stops[times[-1].stop_id]
+                            end_stop_names.add(await get_stop_name(endstop.stop_id))
     linedrawinfo["points"] = list(stop_points)
     linedrawinfo["endstops"] = list(end_stop_names)
     return linedrawinfo
