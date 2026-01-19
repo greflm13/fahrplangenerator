@@ -173,4 +173,6 @@ cython_debug/
 # Output
 *.pdf
 logs
-*.png
+*.db
+*.db-journal
+tmp/

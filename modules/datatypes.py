@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Optional, Any, Dict, TypeVar, Callable, Type, cast
+from collections import namedtuple
 
 
 T = TypeVar("T")
@@ -120,3 +121,8 @@ def hierarchy_stop_from_dict(s: Any) -> Dict[str, HierarchyStop]:
 
 def hierarchy_stop_to_dict(x: Dict[str, HierarchyStop]) -> Any:
     return from_dict(lambda x: to_class(HierarchyStop, x), x)
+
+
+Shape = namedtuple("Shape", ["shapeid", "tripid"])
+Stop = namedtuple("Stop", ["id", "name"])
+Routedata = namedtuple("Routedata", ["dest", "time", "line", "dire", "stop"])
