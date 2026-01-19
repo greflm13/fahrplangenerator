@@ -116,7 +116,7 @@ class TileCache:
         await loop.run_in_executor(None, lambda: img.save(path, format="PNG"))
 
 
-async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, x: int, y: int):
+async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, x: int, y: int, retries: int = 15):
     key = (provider.name, z, x, y)
 
     if key in _TILE_MEM_CACHE:
@@ -127,7 +127,7 @@ async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, 
         _TILE_MEM_CACHE[key] = tile
         return key, tile
 
-    tile = await fetch_tile_with_retry(provider, z, x, y)
+    tile = await fetch_tile_with_retry(provider, z, x, y, retries=retries)
     try:
         await cache.save(provider, z, x, y, tile)
     except Exception:
@@ -217,7 +217,7 @@ async def render_basemap(
     else:
         sample_tile = await cache.load(provider, zoom, x0, y1)
         if sample_tile is None:
-            _, sample_tile = await _load_or_fetch_tile(cache, provider, zoom, x0, y1)
+            _, sample_tile = await _load_or_fetch_tile(cache, provider, zoom, x0, y1, retries=65535)
             await cache.save(provider, zoom, x0, y1, sample_tile)
         _TILE_MEM_CACHE[first_key] = sample_tile
 
