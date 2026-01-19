@@ -203,6 +203,7 @@ body {
   padding-bottom: 0.4em;
   font-size: 1em;
   background: var(--alt-color);
+  color: var(--text-color);
 }
 
 .form ul li:hover,
