@@ -316,8 +316,9 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (ev
   darkModeToggle(newColorScheme);
 });
 
+detectDarkMode();
+
 window.onload = function () {
-  detectDarkMode();
   toggleMapOptions();
   fetchMapProviders();
   fetchStations();
