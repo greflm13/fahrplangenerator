@@ -90,7 +90,7 @@ async def prepare_linedraw_info(stop_times: Dict[str, List], trips: Iterable, st
         if trip.route_id == line and "d" + trip.direction_id == direction:
             if trip.shape_id != "":
                 shapes.add(Shape(trip.shape_id, trip.trip_id))
-    shapedict = await build_shapedict([shap.shapeid for shap in shapes])
+    shapedict = await build_shapedict(list(set([shap.shapeid for shap in shapes])))
     linedrawinfo = {"shapes": [], "points": [], "endstops": []}
     for shap in shapes:
         times = stop_times[shap.tripid]
