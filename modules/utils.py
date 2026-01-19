@@ -47,6 +47,8 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
 
 async def build_shapedict(shape_ids: List[str]) -> Dict[str, List[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
+    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
+    logger.info("Building shapedict", extra={"shapes": shape_ids})
     shapedict: Dict[str, List] = defaultdict(list)
     async for shapeline in await get_in_filtered_data_iter("shapes", column="shape_id", values=shape_ids):
         lon = float(shapeline.shape_pt_lon)

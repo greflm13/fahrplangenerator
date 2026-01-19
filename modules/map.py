@@ -7,18 +7,19 @@ from typing import List, Dict, Optional
 
 import matplotlib
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
 
 from matplotlib.axes import Axes
 from shapely.geometry import Point
 from adjustText import adjust_text
+from matplotlib.figure import Figure
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
 from matplotlib.patches import FancyArrowPatch
 from xyzservices import TileProvider, providers
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from modules.xyz_basemap import render_basemap
 
@@ -116,7 +117,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
                 spa = ax.transData.transform(pa0)
                 spb = ax.transData.transform(pb0)
                 seg_len_px = math.hypot(spb[0] - spa[0], spb[1] - spa[1])
-                if seg_len_px < 2.5:
+                if seg_len_px < 5:
                     continue
                 local_target = target - cum[seg_idx]
                 t = local_target / seg_len
@@ -175,21 +176,19 @@ async def draw_map(
     tmpdir: str = tempfile.gettempdir(),
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ) -> str | None:
-    ax = None
+    fig = Figure(figsize=(10, 10), dpi=dpi)
+    canvas = FigureCanvasAgg(fig)
+    ax = fig.add_subplot(111)
 
     projected_geoms = []
-
     for route in routes["shapes"]:
         geom = route["geometry"]
+        logger.info("Plotting shape")
         gdf = gpd.GeoDataFrame({"geometry": [geom]}, crs="EPSG:4326").to_crs("EPSG:3857")
         projected_geoms.append(gdf.geometry.iloc[0])
+        gdf.plot(ax=ax, facecolor="none", edgecolor=color, linewidth=2)
 
-        if ax is None:
-            ax = gdf.plot(facecolor="none", edgecolor=color, figsize=(10, 10), linewidth=2)
-        else:
-            gdf.plot(ax=ax, facecolor="none", edgecolor=color, linewidth=2)
-
-    if ax is None:
+    if not projected_geoms:
         logger.info("No routes to plot on map")
         return None
 
@@ -266,8 +265,8 @@ async def draw_map(
         draw_h = page_h - 2 * margin_y
 
         _, tmp_png = tempfile.mkstemp(suffix=".png", dir=tmpdir)
-        plt.savefig(tmp_png, dpi=dpi, bbox_inches="tight", pad_inches=0)
-        plt.close()
+        canvas.draw()
+        fig.savefig(tmp_png, dpi=dpi, bbox_inches="tight", pad_inches=0)
 
         image = ImageReader(tmp_png)
 
