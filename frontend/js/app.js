@@ -30,22 +30,19 @@ function isVibrant(color) {
   return saturation > 0.2 && saturation < 0.9;
 }
 
-function generateContrastingVibrantColor() {
+function generateContrastingVibrantColor(mode) {
   const chars = "0123456789abcdef";
   for (;;) {
     let color = "#";
     for (let i = 0; i < 6; i++) {
       color += chars[Math.floor(Math.random() * chars.length)];
     }
-    if (isContrasting(color) && isVibrant(color)) return color;
+    if (mode == "dark") {
+      if (!isContrasting(color) && isVibrant(color)) return color;
+    } else {
+      if (isContrasting(color) && isVibrant(color)) return color;
+    }
   }
-}
-
-function generateColor() {
-  const color = generateContrastingVibrantColor();
-  const colorPicker = document.getElementById("color");
-  document.documentElement.style.setProperty("--acc-color", color);
-  colorPicker.value = color;
 }
 
 function changeColor() {
@@ -262,15 +259,66 @@ function validateForm() {
   return true;
 }
 
+function darkMode() {
+  const colorPicker = document.getElementById("color");
+  const color = generateContrastingVibrantColor("dark");
+  document.documentElement.style.setProperty("--acc-color", color);
+  document.documentElement.style.setProperty("--text-color", "#bfbfbf");
+  document.documentElement.style.setProperty("--alt-color", "black");
+  document.documentElement.style.setProperty("--bg-color", "#0f0f0f");
+  document.documentElement.style.setProperty("--overlay-color", "#0f0f0fcc");
+  colorPicker.value = color;
+}
+function lightMode() {
+  const colorPicker = document.getElementById("color");
+  const color = generateContrastingVibrantColor();
+  document.documentElement.style.setProperty("--acc-color", color);
+  document.documentElement.style.setProperty("--text-color", "black");
+  document.documentElement.style.setProperty("--alt-color", "white");
+  document.documentElement.style.setProperty("--bg-color", "#fafafa");
+  document.documentElement.style.setProperty("--overlay-color", "##fafafacc");
+  colorPicker.value = color;
+}
+
+function darkModeToggle(mode) {
+  const switchState = document.getElementById("dark-mode-switch-check");
+  if (mode == "dark") {
+    darkMode();
+    switchState.checked = true;
+  } else if (mode == "light") {
+    lightMode();
+    switchState.checked = false;
+  } else {
+    if (switchState.checked) {
+      darkMode();
+    } else {
+      lightMode();
+    }
+  }
+}
+
+function detectDarkMode() {
+  if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    darkModeToggle("dark");
+  } else {
+    darkModeToggle("light");
+  }
+}
+
+document.getElementById("dark-mode-switch-check").addEventListener("change", darkModeToggle);
 document.getElementById("schedule-form").addEventListener("submit", handleFormSubmit);
 document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
 document.getElementById("station_name").addEventListener("input", fetchSuggestions);
 document.getElementById("station_name").addEventListener("keydown", select);
 document.getElementById("color").addEventListener("change", changeColor);
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (event) => {
+  const newColorScheme = event.matches ? "dark" : "light";
+  darkModeToggle(newColorScheme);
+});
 
 window.onload = function () {
-  generateColor();
   toggleMapOptions();
   fetchMapProviders();
   fetchStations();
+  detectDarkMode();
 };
