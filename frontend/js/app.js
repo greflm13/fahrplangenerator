@@ -276,7 +276,7 @@ function lightMode() {
   document.documentElement.style.setProperty("--text-color", "black");
   document.documentElement.style.setProperty("--alt-color", "white");
   document.documentElement.style.setProperty("--bg-color", "#fafafa");
-  document.documentElement.style.setProperty("--overlay-color", "##fafafacc");
+  document.documentElement.style.setProperty("--overlay-color", "#fafafacc");
   colorPicker.value = color;
 }
 
