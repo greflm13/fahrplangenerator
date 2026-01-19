@@ -210,6 +210,7 @@ async def download_timetable(dl: str):
         raise HTTPException(status_code=410, detail="Download expired")
 
     if job["status"] == "pending":
+        JOBS[dl]["created"] = time.time()
         return JSONResponse(status_code=202, content={"status": "processing"})
 
     if job["status"] == "error":
@@ -239,6 +240,7 @@ async def generating_status(dl: str):
         raise HTTPException(status_code=410, detail="Download expired")
 
     if job["status"] == "pending":
+        JOBS[dl]["created"] = time.time()
         return JSONResponse(status_code=202, content={"status": "processing"})
 
     if job["status"] == "error":
