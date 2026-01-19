@@ -210,7 +210,7 @@ body {
 .form ul li:focus,
 .form ul li.active {
   background: var(--acc-color);
-  color: var(--text-color);
+  color: var(--alt-color);
   cursor: pointer;
 }
 
