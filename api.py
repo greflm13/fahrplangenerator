@@ -302,9 +302,8 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         else:
             _, args.output = tempfile.mkstemp(suffix=".pdf", prefix=f"{safe_station}_", dir=TMPDIR)
 
-        filepath = base64.b64encode(bytes(args.output, "utf-8"))
-        filename = base64.b64encode(bytes(f"{safe_station}.pdf", "utf-8"))
-        dl = filepath.decode("utf-8") + ":" + filename.decode("utf-8")
+        filepath = base64.b64encode(bytes(args.output.removeprefix(os.path.join(tempfile.gettempdir(), "fahrplan_api_")), "utf-8"))
+        dl = filepath.decode("utf-8")
 
         job = JOBS.get(dl)
         if job:
