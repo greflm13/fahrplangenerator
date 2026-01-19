@@ -183,7 +183,7 @@ async def draw_map(
     projected_geoms = []
     for route in routes["shapes"]:
         geom = route["geometry"]
-        logger.info("Plotting shape")
+        logger.info("Plotting shape for %s", stop_name)
         gdf = gpd.GeoDataFrame({"geometry": [geom]}, crs="EPSG:4326").to_crs("EPSG:3857")
         projected_geoms.append(gdf.geometry.iloc[0])
         gdf.plot(ax=ax, facecolor="none", edgecolor=color, linewidth=2)
