@@ -249,6 +249,8 @@ async def draw_map(
     ax.set_ylim(ymin, ymax)
     ax.set_aspect("equal", adjustable="box")
     ax.set_axis_off()
+    fig.set_dpi(dpi)
+    fig.set_size_inches(10, 10)
 
     try:
         logger.info("Plotting arrows on route for %s", stop_name)
@@ -265,8 +267,11 @@ async def draw_map(
         logger.warning("Exception while plotting stops: %s", exc)
 
     zoom_param = zoom if zoom >= 0 else None
+    canvas.draw()
     try:
+        logger.info("Adding basemap for %s", stop_name)
         await render_basemap(ax=ax, extends=(xmin, xmax, ymin, ymax), zoom=zoom_param, provider=get_provider_source(map_provider), cache_dir=os.path.join(SCRIPTDIR, "__pycache__"))
+        logger.info("Added basemap for %s", stop_name)
     except Exception as exc:
         logger.warning("Failed to add basemap: %s", exc)
 
@@ -287,15 +292,7 @@ async def draw_map(
 
         image = ImageReader(tmp_png)
 
-        pdf.drawImage(
-            image,
-            x=margin_x,
-            y=margin_y,
-            width=draw_w,
-            height=draw_h,
-            preserveAspectRatio=True,
-            anchor="c",
-        )
+        pdf.drawImage(image, x=margin_x, y=margin_y, width=draw_w, height=draw_h, preserveAspectRatio=True, anchor="c")
 
         if isinstance(logo, tempfile._TemporaryFileWrapper):
             image = ImageReader(logo.name)
