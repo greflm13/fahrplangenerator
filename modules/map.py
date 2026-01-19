@@ -20,6 +20,7 @@ from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
 from matplotlib.patches import FancyArrowPatch
 from xyzservices import TileProvider, providers
+from matplotlib.collections import LineCollection
 from shapely.ops import transform as shp_transform
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
@@ -101,7 +102,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
             p1 = ax.transData.transform((xmax, ymax))
             map_diag_px = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
 
-            n_arrows = max(3, int(map_diag_px / 50))
+            n_arrows = max(3, int(map_diag_px / 80))
 
             for k in range(1, n_arrows + 1):
                 target = total * k / (n_arrows + 1)
@@ -183,16 +184,8 @@ async def draw_map(
     canvas = FigureCanvasAgg(fig)
     ax = fig.add_subplot(111)
 
-    def plot_geom(ax, geom, color):
-        if geom.geom_type == "LineString":
-            xs, ys = geom.xy
-            ax.plot(xs, ys, color=color, linewidth=2)
-        else:
-            for part in geom.geoms:
-                xs, ys = part.xy
-                ax.plot(xs, ys, color=color, linewidth=2)
-
     projected_geoms = []
+    line_segments = []
     proj = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True).transform
 
     logger.info("Plotting routes for %s", stop_name)
@@ -201,7 +194,14 @@ async def draw_map(
         geom3857 = shp_transform(proj, geom)
         projected_geoms.append(geom3857)
 
-        plot_geom(ax, geom3857, color)
+        if geom3857.geom_type == "LineString":
+            line_segments.append(list(geom3857.coords))
+        else:
+            for part in geom3857.geoms:
+                line_segments.append(list(part.coords))
+
+    lc = LineCollection(line_segments, colors=[color], linewidths=2)
+    ax.add_collection(lc)
 
     if not projected_geoms:
         logger.info("No routes to plot on map")
