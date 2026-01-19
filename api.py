@@ -37,7 +37,7 @@ async def cleanup_jobs():
     while True:
         now = time.time()
         for dl, job in list(JOBS.items()):
-            if now - job["created"] > JOB_TTL:
+            if job["status"] in ("done", "error") and now - job["created"] > JOB_TTL:
                 if job.get("task"):
                     job["task"].cancel()
                 if os.path.exists(job["path"]):
@@ -52,6 +52,7 @@ async def run_compute_job(token: str, output_path: str, ourstop, stops, args, de
         await asyncio.to_thread(lambda: asyncio.run(compute(ourstop, stops, args, destinations, False, logger)))
         if os.path.exists(output_path):
             JOBS[token]["status"] = "done"
+            JOBS[token]["created"] = time.time()
             logger.info("Timetable generated: %s", output_path)
         else:
             JOBS[token]["status"] = "error"
