@@ -137,7 +137,7 @@ async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, 
     return key, tile
 
 
-async def fetch_tile_with_retry(provider: TileProvider, z: int, x: int, y: int, *, timeout: float = 5.0, retries: int = 3, backoff: float = 0.5) -> Image.Image:
+async def fetch_tile_with_retry(provider: TileProvider, z: int, x: int, y: int, *, timeout: float = 5.0, retries: int = 15, backoff: float = 0.5) -> Image.Image:
     logger.info("Downloading Tile", extra={"provider": provider.get("name"), "tile": {"x": x, "y": y, "zoom": z}})
     for attempt in range(1, retries + 1):
         try:
@@ -176,12 +176,7 @@ def draw_attribution(ax, provider: TileProvider) -> None:
         fontsize=6,
         color="black",
         zorder=10,
-        bbox=dict(
-            boxstyle="round,pad=0.2",
-            facecolor="white",
-            edgecolor="none",
-            alpha=0.7,
-        ),
+        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.7),
     )
 
 
@@ -222,7 +217,7 @@ async def render_basemap(
     else:
         sample_tile = await cache.load(provider, zoom, x0, y1)
         if sample_tile is None:
-            sample_tile = await fetch_tile(provider, zoom, x0, y1)
+            _, sample_tile = await _load_or_fetch_tile(cache, provider, zoom, x0, y1)
             await cache.save(provider, zoom, x0, y1, sample_tile)
         _TILE_MEM_CACHE[first_key] = sample_tile
 
