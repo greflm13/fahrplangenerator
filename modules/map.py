@@ -10,7 +10,6 @@ import geopandas as gpd
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
 
-from pyproj import Transformer
 from matplotlib.axes import Axes
 from shapely.geometry import Point
 from adjustText import adjust_text
@@ -20,10 +19,7 @@ from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
 from matplotlib.patches import FancyArrowPatch
 from xyzservices import TileProvider, providers
-from matplotlib.collections import LineCollection
-from shapely.ops import transform as shp_transform
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-
 
 from modules.xyz_basemap import render_basemap
 
@@ -102,7 +98,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
             p1 = ax.transData.transform((xmax, ymax))
             map_diag_px = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
 
-            n_arrows = max(3, int(map_diag_px / 80))
+            n_arrows = max(3, int(map_diag_px / 50))
 
             for k in range(1, n_arrows + 1):
                 target = total * k / (n_arrows + 1)
@@ -185,23 +181,12 @@ async def draw_map(
     ax = fig.add_subplot(111)
 
     projected_geoms = []
-    line_segments = []
-    proj = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True).transform
-
     logger.info("Plotting routes for %s", stop_name)
     for route in routes["shapes"]:
         geom = route["geometry"]
-        geom3857 = shp_transform(proj, geom)
-        projected_geoms.append(geom3857)
-
-        if geom3857.geom_type == "LineString":
-            line_segments.append(list(geom3857.coords))
-        else:
-            for part in geom3857.geoms:
-                line_segments.append(list(part.coords))
-
-    lc = LineCollection(line_segments, colors=[color], linewidths=2)
-    ax.add_collection(lc)
+        gdf = gpd.GeoDataFrame({"geometry": [geom]}, crs="EPSG:4326").to_crs("EPSG:3857")
+        gdf.plot(ax=ax, facecolor="none", edgecolor=color, linewidth=2)
+        projected_geoms.append(gdf.geometry.iloc[0])
 
     if not projected_geoms:
         logger.info("No routes to plot on map")
@@ -249,25 +234,22 @@ async def draw_map(
     ax.set_ylim(ymin, ymax)
     ax.set_aspect("equal", adjustable="box")
     ax.set_axis_off()
-    fig.set_dpi(dpi)
-    fig.set_size_inches(10, 10)
 
     try:
         logger.info("Plotting arrows on route for %s", stop_name)
         add_direction_arrows(ax, projected_geoms, arrow_color=color)
-        logger.info("Plotted arrows on route for %s", stop_name)
+        logger.info("Plotted arrows on route")
     except Exception as exc:
         logger.warning("Exception while plotting arrows: %s", exc)
 
     try:
         logger.info("Plotting stops on route for %s", stop_name)
         n = plot_stops_on_ax(ax, routes["points"], line_color=color, endstops=routes["endstops"], label_fontsize=label_fontsize, label_rotation=label_rotation)
-        logger.info("Plotted %d stops for route for %s", n, stop_name)
+        logger.info("Plotted %d stops for route", n)
     except Exception as exc:
         logger.warning("Exception while plotting stops: %s", exc)
 
     zoom_param = zoom if zoom >= 0 else None
-    canvas.draw()
     try:
         logger.info("Adding basemap for %s", stop_name)
         await render_basemap(ax=ax, extends=(xmin, xmax, ymin, ymax), zoom=zoom_param, provider=get_provider_source(map_provider), cache_dir=os.path.join(SCRIPTDIR, "__pycache__"))
