@@ -189,8 +189,10 @@ async def draw_map(
         projected_geoms.append(gdf.geometry.iloc[0])
 
     if not projected_geoms:
-        logger.info("No routes to plot on map")
+        logger.info("No routes to plot for %s", stop_name)
         return None
+    else:
+        logger.info("Plotted routes for %s", stop_name)
 
     bounds = [g.bounds for g in projected_geoms]
     xmin = min(b[0] for b in bounds)
