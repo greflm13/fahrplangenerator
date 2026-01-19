@@ -317,8 +317,8 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (ev
 });
 
 window.onload = function () {
+  detectDarkMode();
   toggleMapOptions();
   fetchMapProviders();
   fetchStations();
-  detectDarkMode();
 };
