@@ -303,10 +303,12 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         if job:
             if job["status"] == "pending":
                 logger.info("Job already running: %s", args.output)
+                JOBS[dl]["created"] = time.time()
                 return JSONResponse(status_code=202, content={"message": "PDF generation in progress", "download": dl, "status": "pending"})
 
             if job["status"] == "done":
                 logger.info("Job already completed: %s", args.output)
+                JOBS[dl]["created"] = time.time()
                 return JSONResponse(status_code=200, content={"message": "PDF already generated", "download": dl, "status": "done"})
 
         JOBS[dl] = {"path": args.output, "filename": f"{safe_station}.pdf", "created": time.time(), "status": "pending"}
