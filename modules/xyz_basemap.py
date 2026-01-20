@@ -190,83 +190,87 @@ async def render_basemap(
     zoom_modifier=0,
     max_workers=min(8, os.cpu_count() * 2),  # type: ignore
 ) -> None:
-    xmin, xmax, ymin, ymax = extends
+    try:
+        xmin, xmax, ymin, ymax = extends
 
-    lon_min, lat_min = MERCATOR_TO_WGS84.transform(xmin, ymin)
-    lon_max, lat_max = MERCATOR_TO_WGS84.transform(xmax, ymax)
+        lon_min, lat_min = MERCATOR_TO_WGS84.transform(xmin, ymin)
+        lon_max, lat_max = MERCATOR_TO_WGS84.transform(xmax, ymax)
 
-    if zoom is None:
-        fig = ax.figure
-        bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
-        width_px = int(bbox.width * fig.dpi)
-        height_px = int(bbox.height * fig.dpi)
+        if zoom is None:
+            fig = ax.figure
+            bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+            width_px = int(bbox.width * fig.dpi)
+            height_px = int(bbox.height * fig.dpi)
 
-        zoom = auto_zoom(bounds_wgs84=(lon_min, lon_max, lat_min, lat_max), axis_pixel_size=(width_px, height_px), provider=provider, zoom_modifier=zoom_modifier)
+            zoom = auto_zoom(bounds_wgs84=(lon_min, lon_max, lat_min, lat_max), axis_pixel_size=(width_px, height_px), provider=provider, zoom_modifier=zoom_modifier)
 
-    cache = TileCache(cache_dir)
+        cache = TileCache(cache_dir)
 
-    x0, y1 = lonlat_to_tile(lon_min, lat_max, zoom)
-    x1, y0 = lonlat_to_tile(lon_max, lat_min, zoom)
+        x0, y1 = lonlat_to_tile(lon_min, lat_max, zoom)
+        x1, y0 = lonlat_to_tile(lon_max, lat_min, zoom)
 
-    cols = x1 - x0 + 1
-    rows = y0 - y1 + 1
+        cols = x1 - x0 + 1
+        rows = y0 - y1 + 1
 
-    first_key = (provider.name, zoom, x0, y1)
-    if first_key in _TILE_MEM_CACHE:
-        sample_tile = _TILE_MEM_CACHE[first_key]
-    else:
-        sample_tile = await cache.load(provider, zoom, x0, y1)
-        if sample_tile is None:
-            _, sample_tile = await _load_or_fetch_tile(cache, provider, zoom, x0, y1, retries=65535)
-            await cache.save(provider, zoom, x0, y1, sample_tile)
-        _TILE_MEM_CACHE[first_key] = sample_tile
+        first_key = (provider.name, zoom, x0, y1)
+        if first_key in _TILE_MEM_CACHE:
+            sample_tile = _TILE_MEM_CACHE[first_key]
+        else:
+            sample_tile = await cache.load(provider, zoom, x0, y1)
+            if sample_tile is None:
+                _, sample_tile = await _load_or_fetch_tile(cache, provider, zoom, x0, y1, retries=65535)
+                await cache.save(provider, zoom, x0, y1, sample_tile)
+            _TILE_MEM_CACHE[first_key] = sample_tile
 
-    tile_px = sample_tile.width
+        tile_px = sample_tile.width
 
-    canvas = np.zeros((rows * tile_px, cols * tile_px, 4), dtype=np.uint8)
+        canvas = np.zeros((rows * tile_px, cols * tile_px, 4), dtype=np.uint8)
 
-    def place(img: Image.Image, cx: int, cy: int):
-        arr = np.asarray(img)
-        y0 = cy * tile_px
-        x0 = cx * tile_px
-        canvas[y0 : y0 + tile_px, x0 : x0 + tile_px] = arr
+        def place(img: Image.Image, cx: int, cy: int):
+            arr = np.asarray(img)
+            y0 = cy * tile_px
+            x0 = cx * tile_px
+            canvas[y0 : y0 + tile_px, x0 : x0 + tile_px] = arr  # noqa: F821
 
-    place(sample_tile, 0, 0)
+        place(sample_tile, 0, 0)
 
-    tasks = []
-    for xt in range(x0, x1 + 1):
-        for yt in range(y1, y0 + 1):
-            if xt == x0 and yt == y1:
-                continue
-            tasks.append((xt, yt))
+        tasks = []
+        for xt in range(x0, x1 + 1):
+            for yt in range(y1, y0 + 1):
+                if xt == x0 and yt == y1:
+                    continue
+                tasks.append((xt, yt))
 
-    sem = asyncio.Semaphore(max_workers)
+        sem = asyncio.Semaphore(max_workers)
 
-    async def guarded_load(xt, yt):
-        async with sem:
-            return await _load_or_fetch_tile(cache, provider, zoom, xt, yt)
+        async def guarded_load(xt, yt):
+            async with sem:
+                return await _load_or_fetch_tile(cache, provider, zoom, xt, yt)
 
-    results = await asyncio.gather(*(guarded_load(x, y) for x, y in tasks))
+        results = await asyncio.gather(*(guarded_load(x, y) for x, y in tasks))
 
-    for (prov, z, xt, yt), tile in results:
-        cx = xt - x0
-        cy = yt - y1
-        place(tile, cx, cy)
+        for (_, _, xt, yt), tile in results:
+            cx = xt - x0
+            cy = yt - y1
+            place(tile, cx, cy)
 
-    grid_px = 256
-    res = WEB_MERCATOR_EXTENT / (grid_px * 2**zoom)
+        grid_px = 256
+        res = WEB_MERCATOR_EXTENT / (grid_px * 2**zoom)
 
-    left = -WEB_MERCATOR_HALF + x0 * grid_px * res
-    right = -WEB_MERCATOR_HALF + (x1 + 1) * grid_px * res
-    top = WEB_MERCATOR_HALF - y1 * grid_px * res
-    bottom = WEB_MERCATOR_HALF - (y0 + 1) * grid_px * res
+        left = -WEB_MERCATOR_HALF + x0 * grid_px * res
+        right = -WEB_MERCATOR_HALF + (x1 + 1) * grid_px * res
+        top = WEB_MERCATOR_HALF - y1 * grid_px * res
+        bottom = WEB_MERCATOR_HALF - (y0 + 1) * grid_px * res
 
-    ax.imshow(
-        canvas,
-        extent=(left, right, bottom, top),
-        origin="upper",
-        zorder=0,
-    )
+        ax.imshow(
+            canvas,
+            extent=(left, right, bottom, top),
+            origin="upper",
+            zorder=0,
+        )
 
-    if show_attribution:
-        draw_attribution(ax, provider)
+        if show_attribution:
+            draw_attribution(ax, provider)
+
+    finally:
+        del canvas, results, sample_tile, tile, tasks, first_key

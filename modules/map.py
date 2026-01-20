@@ -304,6 +304,8 @@ async def draw_map(
         logger.info("Saved map to %s", page)
     except Exception as exc:
         logger.error("Failed to save map to %s: %s", page, exc)
+    finally:
+        del pdf, canvas, fig, image, ax, route
 
     return page
 
