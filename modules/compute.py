@@ -394,7 +394,7 @@ async def compute(
                             tmpdir=tmpdir,
                             map_provider=args.map_provider,
                             dpi=args.map_dpi,
-                            zoom_modifier=zoom_modifier
+                            zoom_modifier=zoom_modifier,
                         )
 
         pagelst: list[str] = []
@@ -414,6 +414,11 @@ async def compute(
                 if dire is not None:
                     os.remove(dire)
     finally:
+        del ourroute, ourservs, ourtimes, ourtrips
+        del calendar, data, dires, lines
+        del mon, mondict, monset, sat, satdict, satset, sun, sundict, sunset
+        del pages, routeids, times, services, stopids, stop_times
+        del selected_routes, selected_stop_times
         for file in os.listdir(tmpdir):
             try:
                 os.remove(file)
