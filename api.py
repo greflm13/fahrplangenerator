@@ -2,6 +2,7 @@
 
 import os
 import re
+import gc
 import time
 import base64
 import asyncio
@@ -46,6 +47,7 @@ async def cleanup_jobs():
                     os.remove(job["path"])
                 JOBS.pop(dl, None)
                 logger.info("Cleaned up job %s, %s", dl, job["path"])
+        gc.collect()
         await asyncio.sleep(300)
 
 
