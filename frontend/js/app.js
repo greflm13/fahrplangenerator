@@ -194,7 +194,7 @@ async function pollForDownload(dl) {
   const pollInterval = 3000;
 
   while (true) {
-    const res = await fetch(`/api/status?dl=${encodeURIComponent(dl)}`);
+    const res = await fetch(`/api/status?dl=${dl}`);
 
     if (res.status === 202) {
       await new Promise((r) => setTimeout(r, pollInterval));
