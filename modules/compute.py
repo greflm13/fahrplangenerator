@@ -228,7 +228,6 @@ def create_page(
     logger.info("Done.")
     return path
 
-
 async def compute(
     ourstops: list[HierarchyStop],
     stops: dict[str, Any],
@@ -384,11 +383,12 @@ async def compute(
                     if args.map:
                         logger.info("Drawing map for %s", ourstops[0].stop_name)
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
+                        linedrawinfo = await utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, stopids)
                         pages[line][k + "map"] = await draw_map(
                             page=mappage,
                             stop_name=ourstops[0].stop_name,
                             logo=tmpfile,
-                            routes=await utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, stopids),
+                            linedrawinfo=linedrawinfo,
                             color=color,
                             label_rotation=0,
                             tmpdir=tmpdir,
@@ -396,6 +396,7 @@ async def compute(
                             dpi=args.map_dpi,
                             zoom_modifier=zoom_modifier,
                         )
+                        del linedrawinfo
 
         pagelst: list[str] = []
         if loadingbars:
@@ -416,9 +417,10 @@ async def compute(
     finally:
         del ourroute, ourservs, ourtimes, ourtrips
         del calendar, data, dires, lines
-        del mon, mondict, monset, sat, satdict, satset, sun, sundict, sunset
+        del mon, mondict, monset, mon_iterator, sat, satdict, satset, sat_iterator, sun, sundict, sunset, sun_iterator
         del pages, routeids, times, services, stopids, stop_times
         del selected_routes, selected_stop_times
+        del line_iterator, trip_iterator
         for file in os.listdir(tmpdir):
             try:
                 os.remove(file)

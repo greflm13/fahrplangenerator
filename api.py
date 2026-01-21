@@ -382,6 +382,6 @@ async def get_info():
 if __name__ == "__main__":
     import uvicorn
 
-    rotate_log_file()
+    rotate_log_file(compress=True)
     setup_logger()
     uvicorn.run(app, host="0.0.0.0", port=8000)

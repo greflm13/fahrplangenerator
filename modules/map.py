@@ -165,7 +165,7 @@ async def draw_map(
     page: str,
     stop_name: str,
     logo,
-    routes: Dict,
+    linedrawinfo: Dict,
     color: str,
     label_rotation: int,
     label_fontsize: int = 6,
@@ -183,7 +183,7 @@ async def draw_map(
 
     projected_geoms = []
     logger.info("Plotting routes for %s", stop_name)
-    for route in routes["shapes"]:
+    for route in linedrawinfo["shapes"]:
         geom = route["geometry"]
         gdf = gpd.GeoDataFrame({"geometry": [geom]}, crs="EPSG:4326").to_crs("EPSG:3857")
         gdf.plot(ax=ax, facecolor="none", edgecolor=color, linewidth=2)
@@ -247,7 +247,7 @@ async def draw_map(
 
     try:
         logger.info("Plotting stops on route for %s", stop_name)
-        n = plot_stops_on_ax(ax, routes["points"], line_color=color, endstops=routes["endstops"], label_fontsize=label_fontsize, label_rotation=label_rotation)
+        n = plot_stops_on_ax(ax, linedrawinfo["points"], line_color=color, endstops=linedrawinfo["endstops"], label_fontsize=label_fontsize, label_rotation=label_rotation)
         logger.info("Plotted %d stops on route for %s", n, stop_name)
     except Exception as exc:
         logger.warning("Exception while plotting stops: %s", exc)
