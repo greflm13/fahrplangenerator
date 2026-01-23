@@ -83,8 +83,6 @@ textarea {
 /* ==========================================================================
    Author's custom styles
    ========================================================================== */
-@import url("https://fonts.googleapis.com/css2?family=Fira+Sans,wght@0,400;0,700;0,900&display=swap");
-
 :root {
   --acc-color: cornflowerblue;
   --text-color: black;
