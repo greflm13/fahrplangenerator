@@ -464,3 +464,5 @@ async def compute(
             os.removedirs(tmpdir)
         except Exception:
             pass
+
+    return args.output
