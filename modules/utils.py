@@ -124,7 +124,8 @@ def create_merged_pdf(pages: List[str], path: str):
 
     for page in pages:
         pdf = PdfReader(page)
-        output.add_page(pdf.pages[0])
+        for page in pdf.pages:
+            output.add_page(page)
 
     output.write(path)
 

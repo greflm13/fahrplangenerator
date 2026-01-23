@@ -109,6 +109,27 @@ def addtimes(
     return pdf, posy, addstops, times
 
 
+def chunk_daytimes_by_rows(daytimes: dict[str, list[Routedata]], max_rows: int) -> list[dict[str, list[Routedata]]]:
+    if not daytimes:
+        return []
+
+    hours = sorted(daytimes.keys())
+    max_len = max((len(daytimes[h]) for h in hours), default=0)
+    if max_len == 0:
+        return []
+
+    chunks: list[dict[str, list[Routedata]]] = []
+    for start in range(0, max_len, max_rows):
+        end = start + max_rows
+        page_chunk: dict[str, list[Routedata]] = {}
+        for h in hours:
+            col = daytimes.get(h, [])
+            page_chunk[h] = col[start:end] if len(col) > start else []
+        chunks.append(page_chunk)
+
+    return chunks
+
+
 def create_page(
     line: str,
     dest: str,
@@ -122,89 +143,107 @@ def create_page(
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ):
     logger.info(f"Create page for {line} - {dest}")
-    limit = 0
-    times = 0
-    for i in montimes.values():
-        times = max(times, len(i))
-    limit += times
-    times = 0
-    for i in sattimes.values():
-        times = max(times, len(i))
-    limit += times
-    times = 0
-    for i in suntimes.values():
-        times = max(times, len(i))
-    limit += times
 
-    if limit > 20:
+    def _total_rows(daytimes: dict[str, list["Routedata"]]) -> int:
+        return sum(len(lst) for lst in daytimes.values())
+
+    max_rows_needed = max(
+        (_total_rows(montimes), _total_rows(sattimes), _total_rows(suntimes)),
+        default=0,
+    )
+
+    if max_rows_needed > 20:
         pagesize = pagesizes.portrait(pagesizes.A4)
         movey = 840
     else:
         pagesize = pagesizes.landscape(pagesizes.A4)
         movey = 0
+
     pdf = Canvas(path, pagesize=pagesize)
-    pdf.scale(pagesize[0] / 1188, pagesize[1] / (840 + movey))
+
+    scale_x = pagesize[0] / 1188
+    scale_y = pagesize[1] / (840 + movey)
+    pdf.scale(scale_x, scale_y)
+
     accent = colors.HexColor(color)
 
-    # Header
     pdf.setFont("header", 48)
     pdf.setFillColor(accent)
     pdf.drawCentredString(x=1188 / 2, y=760 + movey, text=f"{line} - {dest}")
 
+    def render_day(daytimes: dict[str, list[Routedata]], day_label: str, posy: float, addstops: dict[str, int]) -> tuple[Canvas, float, dict[str, int], int]:
+        return addtimes(pdf, daytimes, day_label, posy, accent, dest, addstops)
+
     posy = 690 + movey
+    addstops: dict[str, int] = {"num": 1}
+    overall_max_rows = 0
 
-    addstops = {"num": 1}
+    ROW_HEIGHT = 25
+    DAY_HEADER_BLOCK = 60
+    BOTTOM_MARGIN = 60
 
-    times = 0
+    INITIAL_POSY = 690 + movey
 
-    if len(montimes) > 0:
-        loctime = 0
-        for v in montimes.values():
-            for time in v:
-                sp = time.stop.split()
-                if len(sp[-1]) < 2:
-                    sp.pop()
-                stopn = " ".join(sp)
-                if time.dest != stopn:
-                    loctime += 1
-        if loctime > 0:
-            pdf, posy, addstops, loctimes = addtimes(pdf, montimes, "Montag-Freitag", posy, accent, dest, addstops)
-            times = max(times, loctimes)
+    def capacity_from(posy_now: float) -> int:
+        usable = posy_now - BOTTOM_MARGIN - DAY_HEADER_BLOCK
+        return max(0, int(usable // ROW_HEIGHT))
 
-    if len(sattimes) > 0:
-        loctime = 0
-        for v in sattimes.values():
-            for time in v:
-                sp = time.stop.split()
-                if len(sp[-1]) < 2:
-                    sp.pop()
-                stopn = " ".join(sp)
-                if time.dest != stopn:
-                    loctime += 1
-        if loctime > 0:
-            pdf, posy, addstops, loctimes = addtimes(pdf, sattimes, "Samstag", posy, accent, dest, addstops)
-            times = max(times, loctimes)
+    PAGE_CAPACITY = capacity_from(INITIAL_POSY)
+    logger.info(f"Page capacity (rows) at top: {PAGE_CAPACITY}")
 
-    if len(suntimes) > 0:
-        loctime = 0
-        for v in suntimes.values():
-            for time in v:
-                sp = time.stop.split()
-                if len(sp[-1]) < 2:
-                    sp.pop()
-                stopn = " ".join(sp)
-                if time.dest != stopn:
-                    loctime += 1
-        if loctime > 0:
-            pdf, posy, addstops, loctimes = addtimes(pdf, suntimes, "Sonntag", posy, accent, dest, addstops)
-            times = max(times, loctimes)
+    def process_dayset(dayset: dict[str, list[Routedata]], label: str):
+        nonlocal posy, addstops, overall_max_rows
 
-    if times == 0:
+        if not dayset:
+            return
+
+        required_rows = max((len(v) for v in dayset.values()), default=0)
+        if required_rows == 0:
+            return
+
+        remaining_capacity = capacity_from(posy)
+
+        if required_rows <= remaining_capacity:
+            _, posy, addstops, rows_drawn = render_day(dayset, label, posy, addstops)
+            overall_max_rows = max(overall_max_rows, rows_drawn)
+            return
+
+        if required_rows <= PAGE_CAPACITY:
+            if posy != INITIAL_POSY:
+                pdf.showPage()
+                pdf.scale(scale_x, scale_y)
+                posy = INITIAL_POSY
+            _, posy, addstops, rows_drawn = render_day(dayset, label, posy, addstops)
+            overall_max_rows = max(overall_max_rows, rows_drawn)
+            return
+
+        if posy != INITIAL_POSY:
+            pdf.showPage()
+            pdf.scale(scale_x, scale_y)
+            posy = INITIAL_POSY
+
+        chunks = chunk_daytimes_by_rows(dayset, PAGE_CAPACITY)
+        for i, chunk in enumerate(chunks):
+            _, posy, addstops, rows_drawn = render_day(chunk, label, posy, addstops)
+            overall_max_rows = max(overall_max_rows, rows_drawn)
+
+            if i < len(chunks) - 1:
+                pdf.showPage()
+                pdf.scale(scale_x, scale_y)
+                posy = INITIAL_POSY
+
+    if montimes:
+        process_dayset(montimes, "Montag-Freitag")
+    if sattimes:
+        process_dayset(sattimes, "Samstag")
+    if suntimes:
+        process_dayset(suntimes, "Sonntag")
+
+    if overall_max_rows == 0:
         return None
 
-    addstops.pop("num")
-
-    if len(addstops.keys()) > 0:
+    addstops.pop("num", None)
+    if addstops:
         pdf.setFont("add", 10)
         pdf.setFillColor(colors.black)
         y = posy + 34
@@ -227,6 +266,7 @@ def create_page(
     pdf.save()
     logger.info("Done.")
     return path
+
 
 async def compute(
     ourstops: list[HierarchyStop],
