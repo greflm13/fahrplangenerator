@@ -144,15 +144,9 @@ def create_page(
 ):
     logger.info(f"Create page for {line} - {dest}")
 
-    def _total_rows(daytimes: dict[str, list["Routedata"]]) -> int:
-        return sum(len(lst) for lst in daytimes.values())
+    limit = sum(max((len(v) for v in day.values()), default=0) for day in (montimes, sattimes, suntimes))
 
-    max_rows_needed = max(
-        (_total_rows(montimes), _total_rows(sattimes), _total_rows(suntimes)),
-        default=0,
-    )
-
-    if max_rows_needed > 20:
+    if limit > 20:
         pagesize = pagesizes.portrait(pagesizes.A4)
         movey = 840
     else:
