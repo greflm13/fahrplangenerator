@@ -19,7 +19,7 @@ if __package__ is None:
     PACKAGE = ""
 else:
     PACKAGE = __package__
-SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
+SCRIPTDIR = os.path.dirname(os.path.realpath(__file__).removesuffix(PACKAGE))
 
 _TILE_MEM_CACHE: dict[tuple, Image.Image] = {}
 

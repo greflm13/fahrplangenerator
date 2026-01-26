@@ -21,7 +21,7 @@ if __package__ is None:
     PACKAGE = ""
 else:
     PACKAGE = __package__
-SCRIPTDIR = os.path.abspath(os.path.dirname(__file__).removesuffix(PACKAGE))
+SCRIPTDIR = os.path.dirname(os.path.realpath(__file__).removesuffix(PACKAGE))
 CACHEDIR = os.path.join(SCRIPTDIR, "__pycache__")
 
 geolocator = Photon(user_agent="fahrplan.py")
