@@ -160,8 +160,8 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
 async def draw_map(
     page: str,
     stop_name: str,
-    logo,
-    linedrawinfo: Dict,
+    logo: tempfile._TemporaryFileWrapper | str | None,
+    linedrawinfo: dict,
     color: str,
     label_rotation: int,
     label_fontsize: int = 6,
@@ -169,9 +169,9 @@ async def draw_map(
     map_provider: str = "BasemapAT",
     dpi: int = 600,
     padding: int = 15,
-    zoom_modifier=0,
+    zoom_modifier: int = 0,
     tmpdir: str = tempfile.gettempdir(),
-    logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
+    logger: logging.Logger = logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ) -> str | None:
     fig = Figure(figsize=(10, 10))
     canvas = FigureCanvasAgg(fig)
