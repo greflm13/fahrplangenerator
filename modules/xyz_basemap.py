@@ -15,11 +15,7 @@ from matplotlib.axes import Axes
 from xyzservices import TileProvider
 
 # Constants for file paths and exclusions
-if __package__ is None:
-    PACKAGE = ""
-else:
-    PACKAGE = __package__
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__).removesuffix(PACKAGE))
+SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
 
 _TILE_MEM_CACHE: dict[tuple, Image.Image] = {}
 
@@ -226,13 +222,13 @@ async def render_basemap(
 
         canvas = np.zeros((rows * tile_px, cols * tile_px, 4), dtype=np.uint8)
 
-        def place(img: Image.Image, cx: int, cy: int):
+        def place(img: Image.Image, cx: int, cy: int, can):
             arr = np.asarray(img)
             y0 = cy * tile_px
             x0 = cx * tile_px
-            canvas[y0 : y0 + tile_px, x0 : x0 + tile_px] = arr  # noqa: F821
+            can[y0 : y0 + tile_px, x0 : x0 + tile_px] = arr
 
-        place(sample_tile, 0, 0)
+        place(sample_tile, 0, 0, canvas)
 
         tasks = []
         for xt in range(x0, x1 + 1):
@@ -252,7 +248,7 @@ async def render_basemap(
         for (_, _, xt, yt), tile in results:
             cx = xt - x0
             cy = yt - y1
-            place(tile, cx, cy)
+            place(tile, cx, cy, canvas)
 
         grid_px = 256
         res = WEB_MERCATOR_EXTENT / (grid_px * 2**zoom)
@@ -273,4 +269,5 @@ async def render_basemap(
             draw_attribution(ax, provider)
 
     finally:
+        canvas, results, sample_tile, tile, tasks, first_key = None, None, None, None, None, None
         del canvas, results, sample_tile, tile, tasks, first_key

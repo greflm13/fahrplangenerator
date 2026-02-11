@@ -18,14 +18,10 @@ import gzip
 import shutil
 import logging
 from datetime import datetime
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import json as jsonlogger
 
 # Constants for file paths and exclusions
-if __package__ is None:
-    PACKAGE = ""
-else:
-    PACKAGE = __package__
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__).removesuffix(PACKAGE))
+SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
 LOG_DIR = os.path.join(SCRIPTDIR, "logs")
 LATEST_LOG_FILE = os.path.join(LOG_DIR, "latest.jsonl")
 

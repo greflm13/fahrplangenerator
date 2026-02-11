@@ -24,11 +24,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from modules.xyz_basemap import render_basemap
 
 # Constants for file paths and exclusions
-if __package__ is None:
-    PACKAGE = ""
-else:
-    PACKAGE = __package__
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__).removesuffix(PACKAGE))
+SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
 
 MAP_PROVIDERS = {
     "BasemapAT": providers.BasemapAT.highdpi,
@@ -188,6 +184,7 @@ async def draw_map(
         gdf = gpd.GeoDataFrame({"geometry": [geom]}, crs="EPSG:4326").to_crs("EPSG:3857")
         gdf.plot(ax=ax, facecolor="none", edgecolor=color, linewidth=2)
         projected_geoms.append(gdf.geometry.iloc[0])
+        del route
 
     if not projected_geoms:
         logger.info("No routes to plot for %s", stop_name)
@@ -267,9 +264,9 @@ async def draw_map(
     except Exception as exc:
         logger.warning("Failed to add basemap: %s", exc)
 
+    pdf = Canvas(page, pagesize=pagesize)
+    image = None
     try:
-        pdf = Canvas(page, pagesize=pagesize)
-
         page_w, page_h = pagesize
 
         margin_x = 50
@@ -305,7 +302,7 @@ async def draw_map(
     except Exception as exc:
         logger.error("Failed to save map to %s: %s", page, exc)
     finally:
-        del pdf, canvas, fig, image, ax, route
+        del pdf, canvas, fig, image, ax
 
     return page
 

@@ -7,7 +7,7 @@
   ],
   "settings": {
     "ansible.python.interpreterPath": "/home/user/.pyenv/versions/fahrplangenerator/bin/python",
-    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.typeCheckingMode": "standard",
     "ruff.lineLength": 180,
     "python-envs.pythonProjects": [
       {
@@ -49,7 +49,7 @@
           // "-i",
           // "/home/user/Documents/20251231-0159_gtfs_evu_2026",
           // "-r",
-          "-m",
+          // "-m",
           // "-j",
           // "~/Documents/20251027-0109_hst_json_2025/steige.json"
         ]

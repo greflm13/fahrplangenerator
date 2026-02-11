@@ -20,11 +20,7 @@ from modules.map import draw_map
 from modules.datatypes import HierarchyStop, Routedata
 
 # Constants for file paths and exclusions
-if __package__ is None:
-    PACKAGE = ""
-else:
-    PACKAGE = __package__
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__).removesuffix(PACKAGE))
+SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
 PIL.Image.MAX_IMAGE_PIXELS = 9331200000
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -311,6 +307,7 @@ async def compute(
             satset.add(data)
         if calendar[trip.service_id].sunday == "1":
             sunset.add(data)
+        del data
 
     mon = sorted(monset, key=lambda x: x.time)
     sat = sorted(satset, key=lambda x: x.time)
@@ -383,8 +380,8 @@ async def compute(
     else:
         tmpfile = None
 
+    tmpdir = tempfile.mkdtemp()
     try:
-        tmpdir = tempfile.mkdtemp()
         if loadingbars:
             line_iterator = tqdm.tqdm(lines.items(), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True)
         else:
@@ -431,7 +428,8 @@ async def compute(
                             zoom_modifier=zoom_modifier,
                         )
                         del linedrawinfo
-
+            del dires
+        del line_iterator
         pagelst: list[str] = []
         if loadingbars:
             line_iterator = tqdm.tqdm(pages.values(), desc="Collecting pages", unit=" lines", ascii=True, dynamic_ncols=True)
@@ -441,6 +439,7 @@ async def compute(
             for dire in line.values():
                 if dire is not None:
                     pagelst.append(dire)
+        del line_iterator
 
         utils.create_merged_pdf(pagelst, args.output)
 
@@ -450,11 +449,11 @@ async def compute(
                     os.remove(dire)
     finally:
         del ourroute, ourservs, ourtimes, ourtrips
-        del calendar, data, dires, lines
+        del calendar, lines
         del mon, mondict, monset, mon_iterator, sat, satdict, satset, sat_iterator, sun, sundict, sunset, sun_iterator
         del pages, routeids, times, services, stopids, stop_times
         del selected_routes, selected_stop_times
-        del line_iterator, trip_iterator
+        del trip_iterator
         for file in os.listdir(tmpdir):
             try:
                 os.remove(file)

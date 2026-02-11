@@ -19,11 +19,7 @@ from modules.logger import setup_logger, rotate_log_file
 from modules.compute import compute
 
 # Constants for file paths and exclusions
-if __package__ is None:
-    PACKAGE = ""
-else:
-    PACKAGE = __package__
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__).removesuffix(PACKAGE))
+SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
 PIL.Image.MAX_IMAGE_PIXELS = 9331200000
 
 
