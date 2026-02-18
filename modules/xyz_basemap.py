@@ -140,15 +140,15 @@ async def fetch_tile_with_retry(
     for attempt in range(1, retries + 1):
         try:
             return await fetch_tile(provider, z, x, y, timeout=timeout), 200
-        except aiohttp.ClientResponseError as e:
-            if e.code != 404:
-                if attempt < retries:
-                    logger.info(
-                        "Download failed, retrying", extra={"attempt": attempt, "retries": retries, "delay": backoff * (2 ** (attempt - 1)), "tile": {"x": x, "y": y, "zoom": z}}
-                    )
-                    await asyncio.sleep(backoff * (2 ** (attempt - 1)))
-            else:
-                return Image.new("RGBA", (size, size), (0, 0, 0, 0)), 404
+        except Exception as e:
+            if isinstance(e, aiohttp.ClientResponseError):
+                if e.code == 404:
+                    return Image.new("RGBA", (size, size), (0, 0, 0, 0)), 404
+            if attempt < retries:
+                logger.info(
+                    "Download failed, retrying", extra={"attempt": attempt, "retries": retries, "delay": backoff * (2 ** (attempt - 1)), "tile": {"x": x, "y": y, "zoom": z}}
+                )
+                await asyncio.sleep(backoff * (2 ** (attempt - 1)))
 
     return Image.new("RGBA", (size, size), (0, 0, 0, 0)), 500
 
