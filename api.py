@@ -51,9 +51,9 @@ async def cleanup_jobs():
         await asyncio.sleep(300)
 
 
-async def run_compute_job(token: str, output_path: str, ourstop, stops, args, destinations, logger, zoom_modifier):
+async def run_compute_job(token: str, output_path: str, ourstop, stop_name, stops, args, destinations, logger, zoom_modifier):
     try:
-        await asyncio.to_thread(lambda: asyncio.run(compute(ourstop, stops, args, destinations, loadingbars=False, zoom_modifier=zoom_modifier, logger=logger)))
+        await asyncio.to_thread(lambda: asyncio.run(compute(ourstop, stop_name, stops, args, destinations, loadingbars=False, zoom_modifier=zoom_modifier, logger=logger)))
         if os.path.exists(output_path):
             JOBS[token]["status"] = "done"
             JOBS[token]["created"] = time.time()
@@ -321,7 +321,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
 
         JOBS[dl] = {"path": args.output, "filename": f"{safe_station}.pdf", "created": time.time(), "status": "pending"}
 
-        JOBS[dl]["task"] = asyncio.create_task(run_compute_job(dl, args.output, ourstop, stops, args, destinations, logger, zoom_modifier))
+        JOBS[dl]["task"] = asyncio.create_task(run_compute_job(dl, args.output, ourstop, request.station_name, stops, args, destinations, logger, zoom_modifier))
 
         return JSONResponse(status_code=202, content={"message": "PDF generation started", "download": dl, "status": "pending"})
 

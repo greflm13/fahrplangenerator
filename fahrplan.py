@@ -114,7 +114,7 @@ async def main():
                     ourstop.extend(stop.children)
                 ourstop.append(stop)
 
-        await compute(ourstop, stops, args, destinations)
+        await compute(ourstop, choice, stops, args, destinations)
 
 
 if __name__ == "__main__":

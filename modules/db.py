@@ -167,20 +167,22 @@ async def get_table_data_iter(table: str, columns: list | None = None, filters: 
         return _fetch_one(f"SELECT {dist}{cols} FROM {table} WHERE {conditions}", values)
 
 
-async def get_in_filtered_data(table: str, column: str, values: list, columns: list | None = None, distinct: bool = False):
+async def get_in_filtered_data(table: str, column: str, values: list, columns: list | None = None, distinct: bool = False, group_by: list | None = None):
     """Get data from a table where a column's value is in a list."""
     cols = ", ".join(columns) if columns is not None else "*"
     placeholders = ",".join(["?"] * len(values))
     dist = "DISTINCT " if distinct else ""
-    return await _fetch_all(f"SELECT {dist}{cols} FROM {table} WHERE {column} IN ({placeholders})", tuple(values))
+    groups = " GROUP BY " + ", ".join(group_by) if group_by is not None else ""
+    return await _fetch_all(f"SELECT {dist}{cols} FROM {table} WHERE {column} IN ({placeholders}){groups}", tuple(values))
 
 
-async def get_in_filtered_data_iter(table: str, column: str, values: list, columns: list | None = None, distinct: bool = False):
+async def get_in_filtered_data_iter(table: str, column: str, values: list, columns: list | None = None, distinct: bool = False, group_by: list | None = None):
     """Get data from a table where a column's value is in a list as a generator (memory efficient)."""
     cols = ", ".join(columns) if columns is not None else "*"
     placeholders = ",".join(["?"] * len(values))
     dist = "DISTINCT " if distinct else ""
-    return _fetch_one(f"SELECT {dist}{cols} FROM {table} WHERE {column} IN ({placeholders})", tuple(values))
+    groups = " GROUP BY " + ", ".join(group_by) if group_by is not None else ""
+    return _fetch_one(f"SELECT {dist}{cols} FROM {table} WHERE {column} IN ({placeholders}){groups}", tuple(values))
 
 
 async def get_most_frequent_values(table: str, column: str, filters: dict | None = None, limit: int = 1):

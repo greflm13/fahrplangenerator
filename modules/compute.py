@@ -260,6 +260,7 @@ def create_page(
 
 async def compute(
     ourstops: list[HierarchyStop],
+    stop_name: str,
     stops: dict[str, Any],
     args,
     destinations: dict[str, dict[str, str]],
@@ -267,16 +268,19 @@ async def compute(
     zoom_modifier=0,
     logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
 ):
-    logger.info("Computing times for %s", ourstops[0].stop_name)
+    logger.info("Computing times for %s", stop_name)
     stopids = [stop.stop_id for stop in ourstops]
     ourtimes = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
-    logger.info("Computing trips for %s", ourstops[0].stop_name)
+    logger.info("Computing trips for %s", stop_name)
     times = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids, columns=["trip_id"])
+    endstops = await db.get_in_filtered_data(
+        "stop_times", column="trip_id", values=times, columns=["trip_id", "stop_id", "MAX(CAST(stop_sequence AS INTEGER)) AS stop_sequence"], group_by=["trip_id"]
+    )
     ourtrips = await db.get_in_filtered_data("trips", column="trip_id", values=times)
-    logger.info("Computing services for %s", ourstops[0].stop_name)
+    logger.info("Computing services for %s", stop_name)
     services = await db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["service_id"])
     ourservs = await db.get_in_filtered_data("calendar", column="service_id", values=services)
-    logger.info("Computing routes for %s", ourstops[0].stop_name)
+    logger.info("Computing routes for %s", stop_name)
     routeids = await db.get_in_filtered_data("trips", column="trip_id", values=times, columns=["route_id"])
     ourroute = await db.get_in_filtered_data("routes", column="route_id", values=routeids)
 
@@ -284,6 +288,7 @@ async def compute(
     stop_times = await utils.build_stop_times_index([trip.trip_id for trip in ourtrips])
     calendar = utils.build_list_index(ourservs, "service_id")
     selected_routes = utils.build_list_index(ourroute, "route_id")
+    trip_last_stops = utils.build_list_index(endstops, "trip_id")
 
     monset: set[Routedata] = set()
     satset: set[Routedata] = set()
@@ -294,20 +299,21 @@ async def compute(
     else:
         trip_iterator = ourtrips
     for trip in trip_iterator:
-        data = Routedata(
-            dest=trip.trip_headsign,
-            time=selected_stop_times[trip.trip_id].departure_time[:-3],
-            line=trip.route_id,
-            dire=f"d{trip.direction_id}",
-            stop=ourstops[0].stop_name,
-        )
-        if calendar[trip.service_id].monday == "1":
-            monset.add(data)
-        if calendar[trip.service_id].saturday == "1":
-            satset.add(data)
-        if calendar[trip.service_id].sunday == "1":
-            sunset.add(data)
-        del data
+        if trip_last_stops[trip.trip_id].stop_id != selected_stop_times[trip.trip_id].stop_id:
+            data = Routedata(
+                dest=trip.trip_headsign,
+                time=selected_stop_times[trip.trip_id].departure_time[:-3],
+                line=trip.route_id,
+                dire=f"d{trip.direction_id}",
+                stop=stop_name,
+            )
+            if calendar[trip.service_id].monday == "1":
+                monset.add(data)
+            if calendar[trip.service_id].saturday == "1":
+                satset.add(data)
+            if calendar[trip.service_id].sunday == "1":
+                sunset.add(data)
+            del data
 
     mon = sorted(monset, key=lambda x: x.time)
     sat = sorted(satset, key=lambda x: x.time)
@@ -362,7 +368,7 @@ async def compute(
 
     if args.logo:
         try:
-            logger.info("Getting logo for %s", ourstops[0].stop_name)
+            logger.info("Getting logo for %s", stop_name)
             res = requests.get("https://files.sorogon.eu/logo.png")
             tmpfile = tempfile.NamedTemporaryFile(suffix=".png")
             tmpfile.write(res.content)
@@ -383,9 +389,9 @@ async def compute(
     tmpdir = tempfile.mkdtemp()
     try:
         if loadingbars:
-            line_iterator = tqdm.tqdm(lines.items(), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True)
+            line_iterator = tqdm.tqdm(sorted(lines.items(), key=lambda x: x[0]), desc="Creating pages", unit=" lines", ascii=True, dynamic_ncols=True)
         else:
-            line_iterator = lines.items()
+            line_iterator = sorted(lines.items(), key=lambda x: x[0])
         for line, dires in line_iterator:
             if args.color == "random":
                 color = utils.generate_contrasting_vibrant_color()
@@ -395,15 +401,15 @@ async def compute(
                 pages[line] = {}
             for k in dires.keys():
                 dest = destinations[line][k]
-                if dest != ourstops[0].stop_name:
+                if dest != stop_name:
                     page = pages.get(line, {}).get(k, {})
                     if not isinstance(page, str):
                         page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
-                    logger.info("Creating page for %s", ourstops[0].stop_name)
+                    logger.info("Creating page for %s", stop_name)
                     pages[line][k] = create_page(
                         selected_routes[line].route_short_name,
                         dest,
-                        ourstops[0].stop_name,
+                        stop_name,
                         page,
                         mondict.get(line, {}).get(k, {}),
                         satdict.get(line, {}).get(k, {}),
@@ -412,12 +418,12 @@ async def compute(
                         tmpfile,
                     )
                     if args.map:
-                        logger.info("Drawing map for %s", ourstops[0].stop_name)
+                        logger.info("Drawing map for %s", stop_name)
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
                         linedrawinfo = await utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, stopids)
                         pages[line][k + "map"] = await draw_map(
                             page=mappage,
-                            stop_name=ourstops[0].stop_name,
+                            stop_name=stop_name,
                             logo=tmpfile,
                             linedrawinfo=linedrawinfo,
                             color=color,
