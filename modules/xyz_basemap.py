@@ -112,7 +112,7 @@ class TileCache:
         await loop.run_in_executor(None, lambda: img.save(path, format="PNG"))
 
 
-async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, x: int, y: int, retries: int = 15):
+async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, x: int, y: int, retries: int = 15, size: int = 256):
     key = (provider.name, z, x, y)
 
     if key in _TILE_MEM_CACHE:
@@ -123,7 +123,7 @@ async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, 
         _TILE_MEM_CACHE[key] = tile
         return key, tile
 
-    tile = await fetch_tile_with_retry(provider, z, x, y, retries=retries)
+    tile = await fetch_tile_with_retry(provider, z, x, y, retries=retries, size=size)
     try:
         await cache.save(provider, z, x, y, tile)
     except Exception:
@@ -133,20 +133,22 @@ async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, 
     return key, tile
 
 
-async def fetch_tile_with_retry(provider: TileProvider, z: int, x: int, y: int, *, timeout: float = 5, retries: int = 15, backoff: float = 0.5) -> Image.Image:
+async def fetch_tile_with_retry(provider: TileProvider, z: int, x: int, y: int, *, timeout: float = 5.0, retries: int = 15, backoff: float = 0.5, size: int = 256) -> Image.Image:
     logger.info("Downloading Tile", extra={"provider": provider.get("name"), "tile": {"x": x, "y": y, "zoom": z}})
     for attempt in range(1, retries + 1):
         try:
             return await fetch_tile(provider, z, x, y, timeout=timeout)
         except Exception:
             if attempt < retries:
-                logger.info("Download failed, retrying", extra={"attempt": attempt, "retries": retries})
+                logger.info(
+                    "Download failed, retrying", extra={"attempt": attempt, "retries": retries, "delay": backoff * (2 ** (attempt - 1)), "tile": {"x": x, "y": y, "zoom": z}}
+                )
                 await asyncio.sleep(backoff * (2 ** (attempt - 1)))
 
-    return Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+    return Image.new("RGBA", (size, size), (0, 0, 0, 0))
 
 
-async def fetch_tile(provider: TileProvider, z: int, x: int, y: int, timeout: float = 5) -> Image.Image:
+async def fetch_tile(provider: TileProvider, z: int, x: int, y: int, timeout: float = 5.0) -> Image.Image:
     url = provider.build_url(x=x, y=y, z=z)
     headers = {"User-Agent": USER_AGENT}
 
@@ -209,14 +211,17 @@ async def render_basemap(
         cols = x1 - x0 + 1
         rows = y0 - y1 + 1
 
-        first_key = (provider.name, zoom, x0, y1)
+        sx = int(x0 + (x1 - x0) / 2)
+        sy = int(y1 + (y0 - y1) / 2)
+
+        first_key = (provider.name, zoom, sx, sy)
         if first_key in _TILE_MEM_CACHE:
             sample_tile = _TILE_MEM_CACHE[first_key]
         else:
-            sample_tile = await cache.load(provider, zoom, x0, y1)
+            sample_tile = await cache.load(provider, zoom, sx, sy)
             if sample_tile is None:
-                _, sample_tile = await _load_or_fetch_tile(cache, provider, zoom, x0, y1, retries=65535)
-                await cache.save(provider, zoom, x0, y1, sample_tile)
+                _, sample_tile = await _load_or_fetch_tile(cache, provider, zoom, sx, sy, retries=16)
+                await cache.save(provider, zoom, sx, sy, sample_tile)
             _TILE_MEM_CACHE[first_key] = sample_tile
 
         tile_px = sample_tile.width
@@ -242,7 +247,7 @@ async def render_basemap(
 
         async def guarded_load(xt, yt):
             async with sem:
-                return await _load_or_fetch_tile(cache, provider, zoom, xt, yt)
+                return await _load_or_fetch_tile(cache, provider, zoom, xt, yt, size=tile_px)
 
         results = await asyncio.gather(*(guarded_load(x, y) for x, y in tasks))
 
