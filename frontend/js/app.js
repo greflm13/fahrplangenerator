@@ -71,14 +71,12 @@ function clearSuggestions() {
 
 function fillSuggestion(event) {
   const stationInput = document.getElementById("station_name");
-  const dataList = document.getElementById("station_datalist");
 
   const text = event.currentTarget.textContent;
   stationInput.value = text;
 
   clearSuggestions();
   stationInput.focus();
-  stationInput.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 async function fetchStations() {
