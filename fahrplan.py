@@ -16,7 +16,7 @@ import modules.db as db
 
 from modules.map import MAP_PROVIDERS
 from modules.logger import setup_logger, rotate_log_file
-from modules.compute import compute
+from modules.compute import compute, draw_line
 
 # Constants for file paths and exclusions
 SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
@@ -43,6 +43,7 @@ async def main():
     parser.add_argument("-m", "--map", help="Generate maps", action="store_true", dest="map")
     parser.add_argument("-s", "--stop-name-csv", help="Stop name mapping csv folder", required=False, type=str, dest="mapping_csv")
     parser.add_argument("-r", "--reset-db", help="Reset local database", action="store_true", dest="reset_db")
+    parser.add_argument("-l", "--single-line", help="Draw map of single route", action="store_true")
     parser.add_argument("--dpi", help="map dpi", type=int, dest="map_dpi")
     parser.add_argument("--no-logo", action="store_false", dest="logo")
     parser.add_argument(
@@ -65,15 +66,23 @@ async def main():
         append = True
 
     if args.mapping_csv:
+        logger.info("loading hst csv")
         await db.load_hst_csv(args.mapping_csv, append=append)
+        logger.info("loaded hst csv")
 
     if len(args.input) > 0:
         for aid, folder in tqdm.tqdm(enumerate(args.input), total=len(args.input), desc="Loading data", unit="folder", ascii=True, dynamic_ncols=True):
             if os.path.isdir(folder):
+                logger.info("loading gtfs", extra={"folder": folder, "prefix": aid})
                 await db.load_gtfs(folder, aid, append=append)
+                logger.info("lodaed gtfs", extra={"folder": folder, "prefix": aid})
                 append = True
             else:
                 logger.error("Input folder %s does not exist", folder)
+
+    if args.single_line:
+        await single_line_caller(args)
+        return
 
     stops = await db.get_table_data("stops")
 
@@ -99,6 +108,9 @@ async def main():
         except KeyboardInterrupt:
             print()
             break
+        except EOFError:
+            print()
+            break
         if choice is None:
             print()
             break
@@ -115,6 +127,33 @@ async def main():
                 ourstop.append(stop)
 
         await compute(ourstop, choice, stops, args, destinations)
+
+
+async def single_line_caller(args):
+    try:
+        agencies = await db.get_table_data("agency")
+        merged_agencies = utils.map_agency_ids(agencies)
+        choices = [questionary.Choice(title=k, value=",".join(v)) for k, v in merged_agencies.items()]
+        agency_id = await asyncio.to_thread(lambda: questionary.select("Verkehrsunternehmen:\n  ", choices=choices, style=custom_style).ask())
+        routes = await db.get_in_filtered_data("routes", column="agency_id", values=agency_id.split(","))
+        routedict = utils.build_list_index(routes, "route_id")
+        choices = [
+            questionary.Choice(
+                title=f"{route.route_short_name} - {route.route_long_name.split('-')[0].strip()} - {route.route_long_name.split('-')[-1].strip()}", value=route.route_id
+            )
+            for route in routes
+        ]
+        route = await asyncio.to_thread(lambda: questionary.select("Linie:\n  ", choices=choices, style=custom_style).ask())
+        routename = routedict[route].route_short_name
+    except KeyboardInterrupt:
+        print()
+    except EOFError:
+        print()
+    else:
+        if route is None:
+            print()
+            return
+        await draw_line(route, routename, args)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ import copy
 import random
 import logging
 
-from typing import Any, Dict, Iterable, List, Set, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple, NamedTuple
 from collections import defaultdict
 
 import tqdm
@@ -352,3 +352,22 @@ async def build_dest_list() -> Dict[str, Dict[str, str]]:
         headsigns = await get_most_frequent_values("trips", column="trip_headsign", filters={"route_id": trip.route_id, "direction_id": trip.direction_id})
         destinations[trip.route_id][f"d{trip.direction_id}"] = headsigns[0].trip_headsign
     return destinations
+
+
+def map_agency_ids(agencies: List) -> Dict[str, List[str]]:
+    agencies.sort(key=lambda x: x.agency_name)
+    merged_agencies: Dict[str, List[str]] = {}
+    for a in agencies:
+        merged_agencies.setdefault(a.agency_name, []).append(a.agency_id)
+    return merged_agencies
+
+
+def build_route_index(routes: List) -> Dict[str, List[NamedTuple]]:
+    """Index routes by agency_id for quick lookup."""
+    idx: Dict[str, List] = {}
+    for route in routes:
+        aid = getattr(route, "agency_id")
+        if not aid:
+            continue
+        idx.setdefault(aid, []).append(route)
+    return idx

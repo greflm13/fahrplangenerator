@@ -93,11 +93,12 @@ async def load_gtfs(folder: str, agency_id: int, append=True) -> None:
                         await db.execute(f"CREATE TABLE IF NOT EXISTS {typ}({','.join(header)}, PRIMARY KEY ({pk_clause}))")
                     else:
                         await db.execute(f"CREATE TABLE IF NOT EXISTS {typ}({','.join(header)})")
+                    await db.commit()
                     table_cols = [col.name for col in await _fetch_all(f"PRAGMA table_info({typ})")]
                     for col in header:
                         if col not in table_cols:
                             await db.execute(f"ALTER TABLE {typ} ADD COLUMN {col}")
-                    db.executemany(f"INSERT OR REPLACE INTO {typ} ({','.join(header)}) VALUES ({amount})", data)
+                    await db.executemany(f"INSERT OR REPLACE INTO {typ} ({','.join(header)}) VALUES ({amount})", data)
                     for index_col in INDICES.get(typ, []):
                         await db.execute(f"CREATE INDEX IF NOT EXISTS idx_{typ}_{index_col} ON {typ} ({index_col})")
                     await db.commit()
@@ -125,6 +126,7 @@ async def load_hst_csv(file: str, append=True) -> None:
                 await db.execute(f"CREATE TABLE IF NOT EXISTS {typ}({','.join(header)}, PRIMARY KEY ({pk_clause}))")
             else:
                 await db.execute(f"CREATE TABLE IF NOT EXISTS {typ}({','.join(header)})")
+            await db.commit()
             table_cols = [col.name for col in await _fetch_all(f"PRAGMA table_info({typ})")]
             for col in header:
                 if col not in table_cols:

@@ -12,12 +12,13 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
+from shapely.geometry import LineString, Point
 
 import modules.utils as utils
 import modules.db as db
 
 from modules.map import draw_map
-from modules.datatypes import HierarchyStop, Routedata
+from modules.datatypes import HierarchyStop, Routedata, Stop, Shape
 
 # Constants for file paths and exclusions
 SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
@@ -469,5 +470,74 @@ async def compute(
             os.removedirs(tmpdir)
         except Exception:
             pass
+
+    return args.output
+
+
+async def draw_line(route_id: str, route_name: str, args, zoom_modifier=0, logger=logging.getLogger(name=os.path.basename(SCRIPTDIR))):
+    if args.color == "random":
+        color = utils.generate_contrasting_vibrant_color()
+    else:
+        color = args.color
+    if args.logo:
+        try:
+            logger.info("Getting logo for %s", route_name)
+            res = requests.get("https://files.sorogon.eu/logo.png")
+            tmpfile = tempfile.NamedTemporaryFile(suffix=".png")
+            tmpfile.write(res.content)
+            tmpfile.flush()
+        except requests.exceptions.ConnectionError:
+            logger.info("Fallback to string logo")
+            try:
+                pdfmetrics.registerFont(TTFont("logo", "BarlowCondensed_Thin.ttf"))
+            except Exception:
+                try:
+                    pdfmetrics.registerFont(TTFont("logo", "BarlowCondensed-Thin.ttf"))
+                except Exception:
+                    pdfmetrics.registerFont(TTFont("logo", "FiraSans-Thin.ttf"))
+            tmpfile = "</srgn>"
+    else:
+        tmpfile = None
+    tmpdir = tempfile.mkdtemp()
+    trips = await db.get_in_filtered_data("trips", column="route_id", values=[route_id], distinct=True)
+    stops = utils.build_list_index(await db.get_table_data("stops"), "stop_id")
+    stop_times = await utils.build_stop_times_index([trip.trip_id for trip in trips])
+    linedrawinfo = {"shapes": [], "points": [], "endstops": []}
+    shapes: set[str] = set()
+    stop_points: set[tuple] = set()
+    end_stop_names: set[str] = set()
+    for data in trips:
+        shapes.add(data.shape_id)
+    shapedict = await utils.build_shapedict([shap for shap in shapes])
+    logger.info("getting geometry")
+    for shap in shapes:
+        geometry = shapedict[shap]
+        linedrawinfo["shapes"].append({"geometry": LineString(geometry)})
+    logger.info("getting stops")
+    for times in stop_times.values():
+        for stop in times:
+            x = float(stops[stop.stop_id].stop_lon)
+            y = float(stops[stop.stop_id].stop_lat)
+            point = Point(x, y)
+            stop = Stop(stop.stop_id, await utils.get_stop_name(stop.stop_id))
+            stop_points.add((point, stop))
+        endstop = stops[times[-1].stop_id]
+        end_stop_names.add(await utils.get_stop_name(endstop.stop_id))
+    linedrawinfo["points"] = list(stop_points)
+    linedrawinfo["endstops"] = list(end_stop_names)
+    page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
+    await draw_map(
+        page=page,
+        stop_name=route_name,
+        logo=tmpfile,
+        linedrawinfo=linedrawinfo,
+        color=color,
+        label_rotation=0,
+        tmpdir=tmpdir,
+        map_provider=args.map_provider,
+        dpi=args.map_dpi,
+        zoom_modifier=zoom_modifier,
+    )
+    os.rename(page, args.output)
 
     return args.output

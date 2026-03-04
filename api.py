@@ -13,13 +13,13 @@ from typing import Annotated, Optional
 
 from fastapi import FastAPI, HTTPException, Form, Query
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from contextlib import asynccontextmanager
 
 import modules.utils as utils
 import modules.db as db
 
-from modules.compute import compute
+from modules.compute import compute, draw_line
 from modules.map import MAP_PROVIDERS
 from modules.logger import rotate_log_file, setup_logger
 
@@ -29,6 +29,8 @@ STOP_HIERARCHY = None
 STOP_ID_MAPPING = None
 STOPS = None
 DESTINATIONS = None
+AGENCIES = None
+ROUTES = None
 TMPDIR = "/tmp"
 JOBS: dict[str, dict] = {}
 JOB_TTL = 3600
@@ -66,10 +68,25 @@ async def run_compute_job(token: str, output_path: str, ourstop, stop_name, stop
         JOBS[token]["status"] = "error"
 
 
+async def run_route_map_job(token: str, output_path: str, route_id, route_name, args, logger, zoom_modifier):
+    try:
+        await asyncio.to_thread(lambda: asyncio.run(draw_line(route_id, route_name, args, zoom_modifier=zoom_modifier, logger=logger)))
+        if os.path.exists(output_path):
+            JOBS[token]["status"] = "done"
+            JOBS[token]["created"] = time.time()
+            logger.info("Route map generated: %s", output_path)
+        else:
+            JOBS[token]["status"] = "error"
+            logger.error("Error generating route map: %s", output_path)
+    except Exception as e:
+        logger.error("Job %s failed: %s", token, e)
+        JOBS[token]["status"] = "error"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager to load GTFS data at startup."""
-    global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS, TMPDIR
+    global STOP_HIERARCHY, STOP_ID_MAPPING, STOPS, DESTINATIONS, AGENCIES, ROUTES, TMPDIR
     cleanup_task = None
     try:
         logger.info("Loading GTFS data")
@@ -77,6 +94,10 @@ async def lifespan(app: FastAPI):
         stop_hierarchy = await utils.build_stop_hierarchy()
         stop_hierarchy = await utils.query_stop_names(stop_hierarchy, loadingbars=False)
         destinations = await utils.build_dest_list()
+        agencies = await db.get_table_data("agency")
+        agencies = utils.map_agency_ids(agencies)
+        routes = await db.get_table_data("routes")
+        routes = utils.build_route_index(routes)
 
         stop_id_mapping = {}
         for stop in stop_hierarchy.values():
@@ -85,12 +106,14 @@ async def lifespan(app: FastAPI):
             else:
                 stop_id_mapping[stop.stop_name].append(stop.stop_id)
 
-        stops = utils.build_list_index(stops, "stop_id")
+        stops = utils.build_list_index(stops, index="stop_id")
 
         STOP_HIERARCHY = stop_hierarchy
         STOP_ID_MAPPING = stop_id_mapping
         STOPS = stops
         DESTINATIONS = destinations
+        AGENCIES = agencies
+        ROUTES = routes
         TMPDIR = tempfile.mkdtemp(prefix="fahrplan_api_")
 
         logger.info("Loaded GTFS data")
@@ -127,8 +150,16 @@ class FahrplanRequest(BaseModel):
     station_name: str = Field(..., description="Name of the station/stop")
     generate_map: bool = Field(default=False, description="Generate maps for routes")
     color: list = Field(default=["random"], description="Timetable color (or 'random')")
-    map_provider: str = Field(default="BasemapAT", description="Map provider (BasemapAT, OPNVKarte, OSM, OSMDE, ORM, OTM, UN, SAT)")
+    map_provider: str = Field(default="BasemapAT", description=f"Map provider ({', '.join(MAP_PROVIDERS.keys())})")
     map_dpi: int = Field(default=300, description="Map DPI resolution", multiple_of=150)
+
+
+class FahrplanResponse(BaseModel):
+    """Response model for timetable generation"""
+
+    message: str = Field(..., description="Response message")
+    download: str = Field(..., description="Download token for generated timetable")
+    status: str = Field(..., description="Status of the generation")
 
 
 class RootResponse(BaseModel):
@@ -152,9 +183,50 @@ class StationsResponse(BaseModel):
     stations: list[str] = Field(..., description="List of station names")
 
 
+class AgenciesResponse(BaseModel):
+    """Response model for available agencies"""
+
+    total: int = Field(..., description="Total number of agencies")
+    agencies: list[str] = Field(..., description="List of agency names")
+
+
+class RoutesRequest(BaseModel):
+    """Request model for routes of agency"""
+
+    agency: str = Field(..., description="Agency name for which to get routes")
+
+
+class Route(BaseModel):
+    """Route info"""
+
+    model_config = ConfigDict(extra="allow")
+
+    route_id: str = Field(..., description="ID of the route")
+    route_short_name: str = Field(..., description="Short route name, mostly just a number")
+    route_long_name: str = Field(..., description="Route long name, mostly start and end stop with some additional stops for route clarification")
+
+
+class RoutesResponse(BaseModel):
+    """Response model for routes of agency"""
+
+    total: int = Field(..., description="Total number of routes")
+    routes: list[Route] = Field(..., description="List of routes")
+
+
+class RouteRequest(BaseModel):
+    """Request model for route map generation"""
+
+    route_id: str = Field(..., description="ID of the route")
+    route_name: str = Field(..., description="Name of the route")
+    color: list = Field(default=["random"], description="Route color (or 'random')")
+    map_provider: str = Field(default="BasemapAT", description=f"Map provider ({', '.join(MAP_PROVIDERS.keys())})")
+    map_dpi: int = Field(default=300, description="Map DPI resolution", multiple_of=150)
+
+
 class MapProvidersResponse(BaseModel):
     """Response model for available map providers"""
 
+    total: int = Field(..., description="Total number of map providers")
     map_providers: list[str] = Field(..., description="List of map providers")
 
 
@@ -192,6 +264,7 @@ async def root():
         "endpoints": {
             "POST /generate": "Generate a timetable",
             "GET /stations": "Get available stations",
+            "GET /agencies": "Get available agencies",
             "GET /map-providers": "Get available map providers",
             "GET /info": "Get API information",
         },
@@ -228,7 +301,7 @@ async def download_timetable(dl: str):
     return FileResponse(path=job["path"], filename=job["filename"], media_type="application/pdf")
 
 
-@app.get("/status")
+@app.get("/status", response_model=FahrplanResponse)
 async def generating_status(dl: str):
     job = JOBS.get(dl)
 
@@ -246,7 +319,7 @@ async def generating_status(dl: str):
 
     if job["status"] == "pending":
         JOBS[dl]["created"] = time.time()
-        return JSONResponse(status_code=202, content={"status": "processing"})
+        return JSONResponse(status_code=202, content={"message": "PDF currently generating", "download": dl, "status": "processing"})
 
     if job["status"] == "error":
         JOBS.pop(dl, None)
@@ -258,7 +331,7 @@ async def generating_status(dl: str):
     return JSONResponse(content={"message": "PDF generation finished", "download": dl, "status": "done"})
 
 
-@app.post("/generate")
+@app.post("/generate", response_model=FahrplanResponse)
 async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
     """Generate a transit timetable PDF for the given station."""
     try:
@@ -332,6 +405,60 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}")
 
 
+@app.post("/route", response_model=FahrplanResponse)
+async def generate_route_map(request: Annotated[RouteRequest, Form()]):
+    """Generate map PDF for route"""
+    try:
+        if request.color[0] != "random":
+            request.color[0] = request.color[1]
+        args = Args(color=request.color[0], map_provider=request.map_provider, map_dpi=request.map_dpi)
+
+        global ROUTES
+        if ROUTES is None:
+            raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data.")
+
+        logger.info("Generating route map for %s", request.route_name)
+
+        zoom_modifier = ZOOM_MODIFIERS.get(args.map_dpi)
+
+        safe_route = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", request.route_id).strip()
+        safe_route = safe_route.replace(os.path.sep, "_")
+        if not safe_route:
+            safe_route = "fahrplan"
+
+        if request.color[0] == "random":
+            args.output = os.path.join(TMPDIR, f"{safe_route}_{request.map_provider}_{request.map_dpi}.pdf")
+        else:
+            _, args.output = tempfile.mkstemp(suffix=".pdf", prefix=f"{safe_route}_", dir=TMPDIR)
+
+        filepath = base64.b64encode(bytes(args.output.removeprefix(os.path.join(tempfile.gettempdir(), "fahrplan_api_")), "utf-8"))
+        dl = filepath.decode("utf-8")
+
+        job = JOBS.get(dl)
+        if job:
+            if job["status"] == "pending":
+                logger.info("Job already running: %s", args.output)
+                JOBS[dl]["created"] = time.time()
+                return JSONResponse(status_code=202, content={"message": "PDF generation in progress", "download": dl, "status": "pending"})
+
+            if job["status"] == "done":
+                logger.info("Job already completed: %s", args.output)
+                JOBS[dl]["created"] = time.time()
+                return JSONResponse(status_code=200, content={"message": "PDF already generated", "download": dl, "status": "done"})
+
+        JOBS[dl] = {"path": args.output, "filename": f"{safe_route}.pdf", "created": time.time(), "status": "pending"}
+
+        JOBS[dl]["task"] = asyncio.create_task(run_route_map_job(dl, args.output, request.route_id, request.route_name, args, logger, zoom_modifier))
+
+        return JSONResponse(status_code=202, content={"message": "PDF generation started", "download": dl, "status": "pending"})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error generating timetable: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}")
+
+
 @app.get("/stations", response_model=StationsResponse)
 async def get_available_stations(request: Annotated[StationsRequest, Query()]):
     """
@@ -341,8 +468,6 @@ async def get_available_stations(request: Annotated[StationsRequest, Query()]):
     if STOP_ID_MAPPING is None:
         raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
     try:
-        stations = STOP_ID_MAPPING
-
         stations = sorted(STOP_ID_MAPPING.keys())
 
         if request.query:
@@ -355,24 +480,58 @@ async def get_available_stations(request: Annotated[StationsRequest, Query()]):
         raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}")
 
 
+@app.get("/agencies", response_model=AgenciesResponse)
+async def get_agencies():
+    """Get a list of all available agencies in the database."""
+    global AGENCIES
+    if AGENCIES is None:
+        raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
+    try:
+        agencies = sorted(AGENCIES.keys())
+        return {"total": len(agencies), "agencies": agencies}
+    except Exception as e:
+        logger.error("Error fetching agencies: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Error fetching agencies: {str(e)}")
+
+
+@app.get("/routes", response_model=RoutesResponse)
+async def get_routes(request: Annotated[RoutesRequest, Query()]):
+    """Get a list of all routes for an agency."""
+    global AGENCIES, ROUTES
+    if AGENCIES is None or ROUTES is None:
+        raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
+    try:
+        agency_ids = AGENCIES.get(request.agency, [])
+        routes = []
+        for aid in agency_ids:
+            routes.extend([route._asdict() for route in ROUTES[aid]])
+
+        return {"total": len(routes), "routes": routes}
+    except Exception as e:
+        logger.error("Error fetching routes: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Error fetching routes: {str(e)}")
+
+
 @app.get("/map-providers", response_model=MapProvidersResponse)
 async def get_map_providers():
     """Get a list of available map providers."""
-    return {"map_providers": list(MAP_PROVIDERS.keys())}
+    return {"total": len(MAP_PROVIDERS.keys()), "map_providers": list(MAP_PROVIDERS.keys())}
 
 
 @app.get("/info", response_model=Info)
 async def get_info():
     """Get API information and available options"""
     return {
-        "api_version": "1.0.0",
+        "api_version": "1.0.1",
         "title": "Fahrplan Generator API",
         "description": "Generate transit timetables with optional maps",
-        "available_map_providers": ["BasemapAT", "OPNVKarte", "OSM", "OSMDE", "ORM", "OTM", "UN", "SAT"],
+        "available_map_providers": list(MAP_PROVIDERS.keys()),
         "endpoints": {
             "GET /": "Health check",
             "POST /generate": "Generate a timetable",
             "GET /stations": "Get available stations",
+            "GET /agencies": "Get available agencies",
+            "GET /routes": "Get routes for agency",
             "GET /map-providers": "Get available map providers",
             "GET /info": "Get API information",
         },
