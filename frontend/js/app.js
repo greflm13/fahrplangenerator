@@ -87,7 +87,7 @@ async function fetchStations() {
 }
 
 async function fetchAgencies() {
-  const response = await fetch("/api/agencys");
+  const response = await fetch("/api/agencies");
   const agencies = await response.json();
   window.agencies = agencies.data;
 }
@@ -115,6 +115,9 @@ async function fetchSuggestions(type) {
   }
 
   let url;
+  if (type == "agency") {
+    url = `/api/agencies?query=${encodeURIComponent(q)}`;
+  }
   if (type != "route") {
     url = `/api/` + type + `s?query=${encodeURIComponent(q)}`;
   } else {
@@ -424,5 +427,8 @@ window.onload = function () {
   fetchMapProviders();
   if (stationsEl != null) {
     fetchStations();
+  }
+  if (agenciesEl != null) {
+    fetchAgencies();
   }
 };

@@ -496,7 +496,7 @@ async def get_available_stations(request: Annotated[StationsRequest, Query()]):
         raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}")
 
 
-@app.get("/agencys", response_model=AgenciesResponse)
+@app.get("/agencies", response_model=AgenciesResponse)
 async def get_available_agencies(request: Annotated[AgenciesRequest, Query()]):
     """Get a list of all available agencies in the database."""
     global AGENCIES
