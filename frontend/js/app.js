@@ -117,8 +117,7 @@ async function fetchSuggestions(type) {
   let url;
   if (type == "agency") {
     url = `/api/agencies?query=${encodeURIComponent(q)}`;
-  }
-  if (type != "route") {
+  } else if (type != "route") {
     url = `/api/` + type + `s?query=${encodeURIComponent(q)}`;
   } else {
     const agencyId = document.getElementById("agency_name").value;
