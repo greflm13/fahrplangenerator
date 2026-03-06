@@ -347,7 +347,11 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (ev
 detectDarkMode();
 
 window.onload = function () {
-  toggleMapOptions();
+  if (mapEl != null) {
+    toggleMapOptions();
+  }
   fetchMapProviders();
-  fetchStations();
+  if (stationsEl != null) {
+    fetchStations();
+  }
 };
