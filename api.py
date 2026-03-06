@@ -428,7 +428,7 @@ async def generate_route_map(request: Annotated[RouteRequest, Form()]):
         routes = {}
         for aid in agency_ids:
             for route in ROUTES[aid]:
-                route_name = f"{route.route_short_name} - {route.route_long_name.split('-')[0].strip()} - {route.route_long_name.split('-')[-1].strip()}"
+                route_name = f"{route.route_short_name} - {route.route_long_name.split(' - ')[0].strip()} - {route.route_long_name.split(' - ')[-1].strip()}"
                 routes[route_name] = route._asdict()
 
         logger.info("Generating route map for %s", request.route_name)
@@ -528,7 +528,7 @@ async def get_available_routes(request: Annotated[RoutesRequest, Query()]):
             routes.extend([route._asdict() for route in ROUTES[aid]])
 
         for route in routes:
-            route["route_name"] = f"{route['route_short_name']} - {route['route_long_name'].split('-')[0].strip()} - {route['route_long_name'].split('-')[-1].strip()}"
+            route["route_name"] = f"{route['route_short_name']} - {route['route_long_name'].split(' - ')[0].strip()} - {route['route_long_name'].split(' - ')[-1].strip()}"
 
         if request.query:
             query_lower = request.query.lower()
