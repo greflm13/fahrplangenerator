@@ -520,11 +520,11 @@ async def get_available_routes(request: Annotated[RoutesRequest, Query()]):
             routes.extend([route._asdict() for route in ROUTES[aid]])
 
         for route in routes:
-            route["name"] = f"{route['route_short_name']} - {route['route_long_name'].split('-')[0].strip()} - {route['route_long_name'].split('-')[-1].strip()}"
+            route["route_name"] = f"{route['route_short_name']} - {route['route_long_name'].split('-')[0].strip()} - {route['route_long_name'].split('-')[-1].strip()}"
 
         if request.query:
             query_lower = request.query.lower()
-            routes = [route for route in routes if query_lower in route["name"].lower()]
+            routes = [route for route in routes if query_lower in route["route_name"].lower()]
 
         return {"total": len(routes), "data": routes}
     except Exception as e:
