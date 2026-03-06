@@ -62,20 +62,21 @@ function updateHighlight(listEl) {
   }
 }
 
-function clearSuggestions() {
-  const dataList = document.getElementById("station_datalist");
+function clearSuggestions(type) {
+  const dataList = document.getElementById(type + "_datalist");
   dataList.innerHTML = "";
   dataList.style.display = "none";
   currentIndex = -1;
 }
 
 function fillSuggestion(event) {
-  const stationInput = document.getElementById("station_name");
+  type = event.target.id.split("_")[0];
+  const stationInput = document.getElementById(type + "_name");
 
   const text = event.currentTarget.textContent;
   stationInput.value = text;
 
-  clearSuggestions();
+  clearSuggestions(type);
   stationInput.focus();
 }
 
@@ -103,7 +104,7 @@ async function fetchSuggestions(type) {
   const q = inputEl.value;
 
   if (q.length < 3) {
-    clearSuggestions();
+    clearSuggestions(type);
     return;
   }
 
@@ -175,7 +176,7 @@ function select(event) {
   }
 
   if (event.key === "Escape") {
-    clearSuggestions();
+    clearSuggestions(type);
     return;
   }
 }
