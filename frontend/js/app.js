@@ -146,7 +146,7 @@ function select(event) {
   if (!listVisible) {
     if (event.key === "ArrowDown") {
       if (document.getElementById(type + "_name").value.length >= 3) {
-        fetchSuggestions();
+        fetchSuggestions(type);
       }
     }
     return;
