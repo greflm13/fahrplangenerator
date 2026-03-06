@@ -180,14 +180,14 @@ class StationsResponse(BaseModel):
     """Response model for available stations"""
 
     total: int = Field(..., description="Total number of stations")
-    stations: list[str] = Field(..., description="List of station names")
+    data: list[str] = Field(..., description="List of station names")
 
 
 class AgenciesResponse(BaseModel):
     """Response model for available agencies"""
 
     total: int = Field(..., description="Total number of agencies")
-    agencies: list[str] = Field(..., description="List of agency names")
+    data: list[str] = Field(..., description="List of agency names")
 
 
 class RoutesRequest(BaseModel):
@@ -210,7 +210,7 @@ class RoutesResponse(BaseModel):
     """Response model for routes of agency"""
 
     total: int = Field(..., description="Total number of routes")
-    routes: list[Route] = Field(..., description="List of routes")
+    data: list[Route] = Field(..., description="List of routes")
 
 
 class RouteRequest(BaseModel):
@@ -474,7 +474,7 @@ async def get_available_stations(request: Annotated[StationsRequest, Query()]):
             query_lower = request.query.lower()
             stations = [station for station in stations if query_lower in station.lower()]
 
-        return {"total": len(stations), "stations": stations}
+        return {"total": len(stations), "data": stations}
     except Exception as e:
         logger.error("Error fetching stations: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}")
@@ -488,7 +488,7 @@ async def get_agencies():
         raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
     try:
         agencies = sorted(AGENCIES.keys())
-        return {"total": len(agencies), "agencies": agencies}
+        return {"total": len(agencies), "data": agencies}
     except Exception as e:
         logger.error("Error fetching agencies: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Error fetching agencies: {str(e)}")
@@ -506,7 +506,7 @@ async def get_routes(request: Annotated[RoutesRequest, Query()]):
         for aid in agency_ids:
             routes.extend([route._asdict() for route in ROUTES[aid]])
 
-        return {"total": len(routes), "routes": routes}
+        return {"total": len(routes), "data": routes}
     except Exception as e:
         logger.error("Error fetching routes: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Error fetching routes: {str(e)}")

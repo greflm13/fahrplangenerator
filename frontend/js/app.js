@@ -85,9 +85,13 @@ async function fetchStations() {
   window.stations = stations.stations;
 }
 
-async function fetchSuggestions() {
-  const inputEl = document.getElementById("station_name");
-  const dataList = document.getElementById("station_datalist");
+async function fetchStations() {
+  await fetchSuggestions("stations")
+}
+
+async function fetchSuggestions(type) {
+  const inputEl = document.getElementById(type + "_name");
+  const dataList = document.getElementById(type + "_datalist");
   const q = inputEl.value;
 
   if (q.length < 3) {
@@ -95,21 +99,21 @@ async function fetchSuggestions() {
     return;
   }
 
-  const response = await fetch(`/api/stations?query=${encodeURIComponent(q)}`);
-  const stations = await response.json();
+  const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}`);
+  const res = await response.json();
 
   dataList.innerHTML = "";
   dataList.setAttribute("role", "listbox");
 
-  if (stations.total === 0 || (stations.total === 1 && stations.stations[0] === q)) {
+  if (res.total === 0 || (res.total === 1 && res.data[0] === q)) {
     dataList.style.display = "none";
     currentIndex = -1;
     return;
   }
 
-  stations.stations.forEach((station, i) => {
+  res.data.forEach((el, i) => {
     const li = document.createElement("li");
-    li.textContent = station;
+    li.textContent = el;
     li.setAttribute("role", "option");
     li.setAttribute("aria-selected", "false");
     li.addEventListener("mousedown", fillSuggestion);

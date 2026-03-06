@@ -6,9 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Fahrplan Generator</title>
   <link rel="stylesheet" href="css/style.css" />
-  <meta name="description" content="Generate Fahrplan for public transport." />
+  <meta name="description" content="Generate Route map." />
 
-  <meta property="og:title" content="Fahrplan Generator" />
+  <meta property="og:title" content="Linienkarten Generator" />
   <meta property="og:type" content="" />
   <meta property="og:url" content="" />
   <meta property="og:image" content="" />
@@ -34,12 +34,17 @@
       </div>
     </div>
   </nav>
-  <h1 class="header">Fahrplan Generator</h1>
+  <h1 class="header">Linienkarten Generator</h1>
   <div class="form-wrapper">
     <form id="schedule-form" method="post" enctype="application/x-www-form-urlencoded" class="form" autocomplete="off">
-      <label for="stations_name">Stop/Station:</label>
-      <input type="text" id="stations_name" name="stations_name" required />
-      <ul id="stations_datalist">
+      <label for="agencies_name">Agency:</label>
+      <input type="text" id="agencies_name" name="agencies_name" required />
+      <ul id="agencies_datalist">
+        <!-- Suggestions will be populated by JavaScript -->
+      </ul>
+      <label for="routes_name">Route:</label>
+      <input type="text" id="routes_name" name="routes_name" required />
+      <ul id="routes_datalist">
         <!-- Suggestions will be populated by JavaScript -->
       </ul>
       <br /><br />
@@ -56,28 +61,20 @@
         <input type="color" id="color" name="color" value="random" />
       </div>
       <br /><br />
-      <label class="choice check">
-        <input type="checkbox" id="generate-map" name="generate_map" />
-        <span>Generate Map (very slow)</span>
-      </label>
-      <!-- only show this section if generate-map checkbox is checked -->
-      <fieldset id="map-options">
-        <br /><br />
-        <label for="map_provider">Map Provider:</label>
-        <select id="map_provider" name="map_provider">
-          <!-- Options will be populated by JavaScript -->
-        </select>
-        <br /><br />
-        <label for="map_dpi">DPI:</label>
-        <select id="map_dpi" name="map_dpi">
-          <option>150</option>
-          <option selected>300</option>
-          <option>600</option>
-          <option>1200</option>
-        </select>
-      </fieldset>
+      <label for="map_provider">Map Provider:</label>
+      <select id="map_provider" name="map_provider">
+        <!-- Options will be populated by JavaScript -->
+      </select>
       <br /><br />
-      <button type="submit" id="submit">Generate Schedule</button>
+      <label for="map_dpi">DPI:</label>
+      <select id="map_dpi" name="map_dpi">
+        <option>150</option>
+        <option selected>300</option>
+        <option>600</option>
+        <option>1200</option>
+      </select>
+      <br /><br />
+      <button type="submit" id="submit">Generate Map</button>
     </form>
     <div class="loader-overlay" id="loader">
       <div class="loader"></div>
