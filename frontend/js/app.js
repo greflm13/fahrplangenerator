@@ -289,7 +289,7 @@ function validateScheduleForm() {
 
 async function handleRouteFormSubmit(event) {
   event.preventDefault();
-  if (!validateScheduleForm()) return;
+  if (!validateRouteForm()) return;
 
   const formData = new FormData(document.getElementById("route-form"));
   // disable form after submit to prevent api spam
