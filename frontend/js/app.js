@@ -85,8 +85,16 @@ async function fetchStations() {
   window.stations = stations.stations;
 }
 
-async function fetchStations() {
-  await fetchSuggestions("stations")
+async function fetchStationSuggestions() {
+  await fetchSuggestions("stations");
+}
+
+async function fetchAgenciesSuggestions() {
+  await fetchSuggestions("agencies");
+}
+
+async function fetchRoutesSuggestions() {
+  await fetchSuggestions("routes");
 }
 
 async function fetchSuggestions(type) {
@@ -307,11 +315,26 @@ function detectDarkMode() {
   }
 }
 
+stationsEl = document.getElementById("stations_name");
+agenciesEl = document.getElementById("agencies_name");
+routesEl = document.getElementById("routes_name");
+
 document.getElementById("dark-mode-switch-check").addEventListener("change", darkModeToggle);
 document.getElementById("schedule-form").addEventListener("submit", handleFormSubmit);
 document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
-document.getElementById("station_name").addEventListener("input", fetchSuggestions);
-document.getElementById("station_name").addEventListener("keydown", select);
+if (stationsEl) {
+  stationsEl.addEventListener("input", fetchStationSuggestions);
+  stationsEl.addEventListener("keydown", select);
+}
+if (agenciesEl) {
+  agenciesEl.addEventListener("input", fetchAgenciesSuggestions);
+  agenciesEl.addEventListener("keydown", select);
+}
+if (routesEl) {
+  routesEl.addEventListener("input", fetchRoutesSuggestions);
+  routesEl.addEventListener("keydown", select);
+}
+
 document.getElementById("color").addEventListener("change", changeColor);
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (event) => {
   const newColorScheme = event.matches ? "dark" : "light";
