@@ -112,7 +112,7 @@ async function fetchSuggestions(type) {
   if (type != "routes") {
     url = `/api/` + type + `?query=${encodeURIComponent(q)}`;
   } else {
-    const agencyId = document.getElementById("agencies_name").text;
+    const agencyId = document.getElementById("agencies_name").value;
     url = `/api/` + type + `?query=${encodeURIComponent(q)}` + `&agency=${encodeURIComponent(agencyId)}`;
   }
   const response = await fetch(url);
