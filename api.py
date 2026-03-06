@@ -435,7 +435,7 @@ async def generate_route_map(request: Annotated[RouteRequest, Form()]):
 
         zoom_modifier = ZOOM_MODIFIERS.get(args.map_dpi)
 
-        route_id = routes[request.route_name]
+        route_id = routes[request.route_name]["route_id"]
 
         safe_route = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", request.route_name).strip()
         safe_route = safe_route.replace(os.path.sep, "_")
