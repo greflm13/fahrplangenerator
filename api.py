@@ -183,6 +183,12 @@ class StationsResponse(BaseModel):
     data: list[str] = Field(..., description="List of station names")
 
 
+class AgenciesRequest(BaseModel):
+    """Request model for available agencies"""
+
+    query: Optional[str] = Field(default=None, description="Search query for agency names")
+
+
 class AgenciesResponse(BaseModel):
     """Response model for available agencies"""
 
@@ -194,6 +200,7 @@ class RoutesRequest(BaseModel):
     """Request model for routes of agency"""
 
     agency: str = Field(..., description="Agency name for which to get routes")
+    query: Optional[str] = Field(default=None, description="Search query for route names")
 
 
 class Route(BaseModel):
@@ -481,13 +488,16 @@ async def get_available_stations(request: Annotated[StationsRequest, Query()]):
 
 
 @app.get("/agencies", response_model=AgenciesResponse)
-async def get_agencies():
+async def get_agencies(request: Annotated[StationsRequest, Query()]):
     """Get a list of all available agencies in the database."""
     global AGENCIES
     if AGENCIES is None:
         raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
     try:
         agencies = sorted(AGENCIES.keys())
+        if request.query:
+            query_lower = request.query.lower()
+            agencies = [agency for agency in agencies if query_lower in agency.lower()]
         return {"total": len(agencies), "data": agencies}
     except Exception as e:
         logger.error("Error fetching agencies: %s", str(e))
@@ -505,6 +515,9 @@ async def get_routes(request: Annotated[RoutesRequest, Query()]):
         routes = []
         for aid in agency_ids:
             routes.extend([route._asdict() for route in ROUTES[aid]])
+        if request.query:
+            query_lower = request.query.lower()
+            routes = [route for route in routes if query_lower in route.lower()]
 
         return {"total": len(routes), "data": routes}
     except Exception as e:

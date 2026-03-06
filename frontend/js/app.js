@@ -70,14 +70,15 @@ function clearSuggestions(type) {
 }
 
 function fillSuggestion(event) {
+  console.log(event)
   type = event.target.id.split("_")[0];
-  const stationInput = document.getElementById(type + "_name");
+  const input = document.getElementById(type + "_name");
 
   const text = event.currentTarget.textContent;
-  stationInput.value = text;
+  input.value = text;
 
   clearSuggestions(type);
-  stationInput.focus();
+  input.focus();
 }
 
 async function fetchStations() {
