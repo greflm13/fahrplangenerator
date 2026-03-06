@@ -135,9 +135,8 @@ async function fetchSuggestions(type) {
 }
 
 function select(event) {
-  console.log(event);
-  console.log(event.target.id.split("_")[0]);
-  const dataList = document.getElementById("station_datalist");
+  type = event.target.id.split("_")[0];
+  const dataList = document.getElementById(type + "_datalist");
   const items = dataList.querySelectorAll("li");
 
   if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) return;
@@ -146,7 +145,7 @@ function select(event) {
 
   if (!listVisible) {
     if (event.key === "ArrowDown") {
-      if (document.getElementById("station_name").value.length >= 3) {
+      if (document.getElementById(type + "_name").value.length >= 3) {
         fetchSuggestions();
       }
     }
