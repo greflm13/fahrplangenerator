@@ -211,6 +211,7 @@ class Route(BaseModel):
     route_id: str = Field(..., description="ID of the route")
     route_short_name: str = Field(..., description="Short route name, mostly just a number")
     route_long_name: str = Field(..., description="Route long name, mostly start and end stop with some additional stops for route clarification")
+    route_name: str = Field(..., description="Name of the route")
 
 
 class RoutesResponse(BaseModel):
@@ -518,9 +519,12 @@ async def get_available_routes(request: Annotated[RoutesRequest, Query()]):
         for aid in agency_ids:
             routes.extend([route._asdict() for route in ROUTES[aid]])
 
+        for route in routes:
+            route["name"] = f"{route['route_short_name']} - {route['route_long_name'].split('-')[0].strip()} - {route['route_long_name'].split('-')[-1].strip()}"
+
         if request.query:
             query_lower = request.query.lower()
-            routes = [route for route in routes if query_lower in route["route_long_name"].lower()]
+            routes = [route for route in routes if query_lower in route["name"].lower()]
 
         return {"total": len(routes), "data": routes}
     except Exception as e:
