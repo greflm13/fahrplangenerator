@@ -103,14 +103,14 @@ async function fetchSuggestions(type) {
   const dataList = document.getElementById(type + "_datalist");
   const q = inputEl.value;
 
-  if (type != "agencies" && q.length < 3) {
+  if (type != "routes" && q.length < 3) {
     clearSuggestions(type);
     return;
   } else {
     const agencyId = document.getElementById("agencies_name").text;
   }
 
-  if (type != "agencies") {
+  if (type != "routes") {
     const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}`);
   } else {
     const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}` + `&agency=${encodeURIComponent(agencyId)}`);
