@@ -103,12 +103,18 @@ async function fetchSuggestions(type) {
   const dataList = document.getElementById(type + "_datalist");
   const q = inputEl.value;
 
-  if (q.length < 3) {
+  if (type != "agencies" && q.length < 3) {
     clearSuggestions(type);
     return;
+  } else {
+    const agencyId = document.getElementById("agencies_name").text;
   }
 
-  const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}`);
+  if (type != "agencies") {
+    const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}`);
+  } else {
+    const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}` + `&agency=${encodeURIComponent(agencyId)}`);
+  }
   const res = await response.json();
 
   dataList.innerHTML = "";
