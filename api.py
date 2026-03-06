@@ -99,12 +99,12 @@ async def lifespan(app: FastAPI):
         routes = await db.get_table_data("routes")
         routes = utils.build_route_index(routes)
 
-        stop_id_mapping = {}
+        stop_id_mapping: dict[str, list[str]] = {}
         for stop in stop_hierarchy.values():
-            if stop.stop_name not in stop_id_mapping:
-                stop_id_mapping[stop.stop_name] = [stop.stop_id]
-            else:
-                stop_id_mapping[stop.stop_name].append(stop.stop_id)
+            sid = stop.stop_id
+            if not sid:
+                continue
+            stop_id_mapping.setdefault(sid, []).append(stop.stop_id)
 
         stops = utils.build_list_index(stops, index="stop_id")
 
@@ -495,9 +495,11 @@ async def get_available_agencies(request: Annotated[AgenciesRequest, Query()]):
         raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
     try:
         agencies = sorted(AGENCIES.keys())
+
         if request.query:
             query_lower = request.query.lower()
             agencies = [agency for agency in agencies if query_lower in agency.lower()]
+
         return {"total": len(agencies), "data": agencies}
     except Exception as e:
         logger.error("Error fetching agencies: %s", str(e))
@@ -515,9 +517,10 @@ async def get_available_routes(request: Annotated[RoutesRequest, Query()]):
         routes = []
         for aid in agency_ids:
             routes.extend([route._asdict() for route in ROUTES[aid]])
+
         if request.query:
             query_lower = request.query.lower()
-            routes = [route for route in routes if query_lower in route.lower()]
+            routes = [route for route in routes if query_lower in route.route_long_name.lower()]
 
         return {"total": len(routes), "data": routes}
     except Exception as e:
