@@ -101,10 +101,10 @@ async def lifespan(app: FastAPI):
 
         stop_id_mapping: dict[str, list[str]] = {}
         for stop in stop_hierarchy.values():
-            sid = stop.stop_id
-            if not sid:
+            sn = stop.stop_name
+            if not sn:
                 continue
-            stop_id_mapping.setdefault(sid, []).append(stop.stop_id)
+            stop_id_mapping.setdefault(sn, []).append(stop.stop_id)
 
         stops = utils.build_list_index(stops, index="stop_id")
 
