@@ -362,7 +362,7 @@ def map_agency_ids(agencies: List) -> Dict[str, List[str]]:
     return merged_agencies
 
 
-def build_route_index(routes: List) -> Dict[str, List[NamedTuple]]:
+def build_route_index(routes: List) -> Dict[str, List]:
     """Index routes by agency_id for quick lookup."""
     idx: Dict[str, List] = {}
     for route in routes:

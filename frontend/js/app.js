@@ -83,7 +83,13 @@ function fillSuggestion(event) {
 async function fetchStations() {
   const response = await fetch("/api/stations");
   const stations = await response.json();
-  window.stations = stations.stations;
+  window.stations = stations.data;
+}
+
+async function fetchAgencies() {
+  const response = await fetch("/api/agencies");
+  const agencies = await response.json();
+  window.agencies = agencies.data;
 }
 
 async function fetchStationSuggestions() {
@@ -235,9 +241,9 @@ async function pollForDownload(dl) {
   }
 }
 
-async function handleFormSubmit(event) {
+async function handleScheduleFormSubmit(event) {
   event.preventDefault();
-  if (!validateForm()) return;
+  if (!validateScheduleForm()) return;
 
   const formData = new FormData(document.getElementById("schedule-form"));
   // disable form after submit to prevent api spam
@@ -265,7 +271,7 @@ async function handleFormSubmit(event) {
   }
 }
 
-function validateForm() {
+function validateScheduleForm() {
   const stationInput = document.getElementById("station_name");
   const stationName = stationInput.value;
 
@@ -276,6 +282,52 @@ function validateForm() {
 
   if (!window.stations.includes(stationName)) {
     alert("Please enter a valid station.");
+    return false;
+  }
+  return true;
+}
+
+async function handleRouteFormSubmit(event) {
+  event.preventDefault();
+  if (!validateScheduleForm()) return;
+
+  const formData = new FormData(document.getElementById("route-form"));
+  // disable form after submit to prevent api spam
+  const submitButton = document.getElementById("submit");
+  const loader = document.getElementById("loader");
+  submitButton.disabled = true;
+  loader.style.display = "flex";
+
+  try {
+    const response = await fetch("/api/route", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      await pollForDownload(data.download);
+    } else {
+      const error = await response.json();
+      alert("Error generating timetable: " + error.detail);
+    }
+  } finally {
+    submitButton.disabled = false;
+    loader.style.display = "none";
+  }
+}
+
+function validateRouteForm() {
+  const agenciesInput = document.getElementById("agencies_name");
+  const agenciesName = agenciesInput.value;
+
+  if (!Array.isArray(window.agencies)) {
+    console.warn("Agencies not loaded yet; skipping strict validation.");
+    return true;
+  }
+
+  if (!window.agencies.includes(agenciesName)) {
+    alert("Please enter a valid agency.");
     return false;
   }
   return true;
@@ -327,13 +379,20 @@ function detectDarkMode() {
   }
 }
 
+scheduleFormEl = document.getElementById("schedule-form");
+routeFormEl = document.getElementById("route-form");
 stationsEl = document.getElementById("stations_name");
 agenciesEl = document.getElementById("agencies_name");
 routesEl = document.getElementById("routes_name");
 mapEl = document.getElementById("generate-map");
 
 document.getElementById("dark-mode-switch-check").addEventListener("change", darkModeToggle);
-document.getElementById("schedule-form").addEventListener("submit", handleFormSubmit);
+if (scheduleFormEl != null) {
+  scheduleFormEl.addEventListener("submit", handleScheduleFormSubmit);
+}
+if (routeFormEl != null) {
+  routeFormEl.addEventListener("submit", handleRouteFormSubmit);
+}
 if (mapEl != null) {
   mapEl.addEventListener("change", toggleMapOptions);
 }

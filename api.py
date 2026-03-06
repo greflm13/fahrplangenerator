@@ -224,7 +224,7 @@ class RoutesResponse(BaseModel):
 class RouteRequest(BaseModel):
     """Request model for route map generation"""
 
-    route_id: str = Field(..., description="ID of the route")
+    agency_name: str = Field(..., description="Name of the agency running the route")
     route_name: str = Field(..., description="Name of the route")
     color: list = Field(default=["random"], description="Route color (or 'random')")
     map_provider: str = Field(default="BasemapAT", description=f"Map provider ({', '.join(MAP_PROVIDERS.keys())})")
@@ -421,15 +421,23 @@ async def generate_route_map(request: Annotated[RouteRequest, Form()]):
             request.color[0] = request.color[1]
         args = Args(color=request.color[0], map_provider=request.map_provider, map_dpi=request.map_dpi)
 
-        global ROUTES
-        if ROUTES is None:
-            raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data.")
+        global AGENCIES, ROUTES
+        if AGENCIES is None or ROUTES is None:
+            raise HTTPException(status_code=400, detail="No GTFS data loaded. Please load GTFS data files first or provide input_folders.")
+        agency_ids = AGENCIES.get(request.agency_name, [])
+        routes = {}
+        for aid in agency_ids:
+            for route in ROUTES[aid]:
+                route_name = f"{route.route_short_name} - {route.route_long_name.split('-')[0].strip()} - {route.route_long_name.split('-')[-1].strip()}"
+                routes[route_name] = route._asdict()
 
         logger.info("Generating route map for %s", request.route_name)
 
         zoom_modifier = ZOOM_MODIFIERS.get(args.map_dpi)
 
-        safe_route = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", request.route_id).strip()
+        route_id = routes[request.route_name]
+
+        safe_route = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", request.route_name).strip()
         safe_route = safe_route.replace(os.path.sep, "_")
         if not safe_route:
             safe_route = "fahrplan"
@@ -456,7 +464,7 @@ async def generate_route_map(request: Annotated[RouteRequest, Form()]):
 
         JOBS[dl] = {"path": args.output, "filename": f"{safe_route}.pdf", "created": time.time(), "status": "pending"}
 
-        JOBS[dl]["task"] = asyncio.create_task(run_route_map_job(dl, args.output, request.route_id, request.route_name, args, logger, zoom_modifier))
+        JOBS[dl]["task"] = asyncio.create_task(run_route_map_job(dl, args.output, route_id, request.route_name, args, logger, zoom_modifier))
 
         return JSONResponse(status_code=202, content={"message": "PDF generation started", "download": dl, "status": "pending"})
 
