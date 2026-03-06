@@ -70,10 +70,7 @@ function clearSuggestions(type) {
 }
 
 function fillSuggestion(event) {
-  console.log(event);
-  target = event.target;
-
-  type = event.explicitOriginalTarget.id.split("_")[0];
+  type = event.target.parentElement.id.split("_")[0];
   const input = document.getElementById(type + "_name");
 
   const text = event.currentTarget.textContent;
