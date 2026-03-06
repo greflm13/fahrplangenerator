@@ -318,10 +318,13 @@ function detectDarkMode() {
 stationsEl = document.getElementById("stations_name");
 agenciesEl = document.getElementById("agencies_name");
 routesEl = document.getElementById("routes_name");
+mapEl = document.getElementById("generate-map");
 
 document.getElementById("dark-mode-switch-check").addEventListener("change", darkModeToggle);
 document.getElementById("schedule-form").addEventListener("submit", handleFormSubmit);
-document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
+if (mapEl != null) {
+  mapEl.addEventListener("change", toggleMapOptions);
+}
 if (stationsEl != null) {
   stationsEl.addEventListener("input", fetchStationSuggestions);
   stationsEl.addEventListener("keydown", select);
