@@ -106,13 +106,12 @@ async function fetchSuggestions(type) {
   if (type != "routes" && q.length < 3) {
     clearSuggestions(type);
     return;
-  } else {
-    const agencyId = document.getElementById("agencies_name").text;
   }
 
   if (type != "routes") {
     const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}`);
   } else {
+    const agencyId = document.getElementById("agencies_name").text;
     const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}` + `&agency=${encodeURIComponent(agencyId)}`);
   }
   const res = await response.json();
