@@ -520,7 +520,7 @@ async def get_available_routes(request: Annotated[RoutesRequest, Query()]):
 
         if request.query:
             query_lower = request.query.lower()
-            routes = [route for route in routes if query_lower in route.route_long_name.lower()]
+            routes = [route for route in routes if query_lower in route["route_long_name"].lower()]
 
         return {"total": len(routes), "data": routes}
     except Exception as e:
