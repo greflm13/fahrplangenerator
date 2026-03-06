@@ -135,7 +135,7 @@ async function fetchSuggestions(type) {
 
   res.data.forEach((el, i) => {
     const li = document.createElement("li");
-    if (type != "routes") {
+    if (type != "route") {
       li.textContent = el;
     } else {
       li.textContent = el.route_name;
