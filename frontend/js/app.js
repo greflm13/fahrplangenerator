@@ -322,15 +322,15 @@ routesEl = document.getElementById("routes_name");
 document.getElementById("dark-mode-switch-check").addEventListener("change", darkModeToggle);
 document.getElementById("schedule-form").addEventListener("submit", handleFormSubmit);
 document.getElementById("generate-map").addEventListener("change", toggleMapOptions);
-if (stationsEl) {
+if (stationsEl != null) {
   stationsEl.addEventListener("input", fetchStationSuggestions);
   stationsEl.addEventListener("keydown", select);
 }
-if (agenciesEl) {
+if (agenciesEl != null) {
   agenciesEl.addEventListener("input", fetchAgenciesSuggestions);
   agenciesEl.addEventListener("keydown", select);
 }
-if (routesEl) {
+if (routesEl != null) {
   routesEl.addEventListener("input", fetchRoutesSuggestions);
   routesEl.addEventListener("keydown", select);
 }
