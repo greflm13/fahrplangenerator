@@ -70,7 +70,9 @@ function clearSuggestions(type) {
 }
 
 function fillSuggestion(event) {
-  console.log(event)
+  console.log(event);
+  target = event.target;
+
   type = event.explicitOriginalTarget.id.split("_")[0];
   const input = document.getElementById(type + "_name");
 
@@ -126,9 +128,8 @@ async function fetchSuggestions(type) {
     li.textContent = el;
     li.setAttribute("role", "option");
     li.setAttribute("aria-selected", "false");
-    li.addEventListener("mousedown", fillSuggestion);
-
     dataList.appendChild(li);
+    li.addEventListener("mousedown", fillSuggestion);
   });
 
   dataList.style.display = "block";
