@@ -108,12 +108,14 @@ async function fetchSuggestions(type) {
     return;
   }
 
+  let url;
   if (type != "routes") {
-    const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}`);
+    url = `/api/` + type + `?query=${encodeURIComponent(q)}`;
   } else {
     const agencyId = document.getElementById("agencies_name").text;
-    const response = await fetch(`/api/` + type + `?query=${encodeURIComponent(q)}` + `&agency=${encodeURIComponent(agencyId)}`);
+    url = `/api/` + type + `?query=${encodeURIComponent(q)}` + `&agency=${encodeURIComponent(agencyId)}`;
   }
+  const response = await fetch(url);
   const res = await response.json();
 
   dataList.innerHTML = "";
