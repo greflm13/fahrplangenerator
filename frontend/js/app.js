@@ -129,7 +129,11 @@ async function fetchSuggestions(type) {
 
   res.data.forEach((el, i) => {
     const li = document.createElement("li");
-    li.textContent = el;
+    if (type != "routes") {
+      li.textContent = el;
+    } else {
+      li.textContent = el.route_name;
+    }
     li.setAttribute("role", "option");
     li.setAttribute("aria-selected", "false");
     dataList.appendChild(li);
