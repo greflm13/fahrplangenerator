@@ -135,7 +135,8 @@ async function fetchSuggestions(type) {
 }
 
 function select(event) {
-  console.log(event)
+  console.log(event);
+  console.log(event.target.id.split("_")[0]);
   const dataList = document.getElementById("station_datalist");
   const items = dataList.querySelectorAll("li");
 
