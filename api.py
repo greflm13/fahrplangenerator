@@ -488,7 +488,7 @@ async def get_available_stations(request: Annotated[StationsRequest, Query()]):
 
 
 @app.get("/agencies", response_model=AgenciesResponse)
-async def get_agencies(request: Annotated[StationsRequest, Query()]):
+async def get_agencies(request: Annotated[AgenciesRequest, Query()]):
     """Get a list of all available agencies in the database."""
     global AGENCIES
     if AGENCIES is None:
