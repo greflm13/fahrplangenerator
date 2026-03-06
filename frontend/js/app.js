@@ -87,21 +87,21 @@ async function fetchStations() {
 }
 
 async function fetchAgencies() {
-  const response = await fetch("/api/agencies");
+  const response = await fetch("/api/agencys");
   const agencies = await response.json();
   window.agencies = agencies.data;
 }
 
 async function fetchStationSuggestions() {
-  await fetchSuggestions("stations");
+  await fetchSuggestions("station");
 }
 
 async function fetchAgenciesSuggestions() {
-  await fetchSuggestions("agencies");
+  await fetchSuggestions("agency");
 }
 
 async function fetchRoutesSuggestions() {
-  await fetchSuggestions("routes");
+  await fetchSuggestions("route");
 }
 
 async function fetchSuggestions(type) {
@@ -109,17 +109,17 @@ async function fetchSuggestions(type) {
   const dataList = document.getElementById(type + "_datalist");
   const q = inputEl.value;
 
-  if (type != "routes" && q.length < 3) {
+  if (type != "route" && q.length < 3) {
     clearSuggestions(type);
     return;
   }
 
   let url;
-  if (type != "routes") {
-    url = `/api/` + type + `?query=${encodeURIComponent(q)}`;
+  if (type != "route") {
+    url = `/api/` + type + `s?query=${encodeURIComponent(q)}`;
   } else {
-    const agencyId = document.getElementById("agencies_name").value;
-    url = `/api/` + type + `?query=${encodeURIComponent(q)}` + `&agency=${encodeURIComponent(agencyId)}`;
+    const agencyId = document.getElementById("agency_name").value;
+    url = `/api/` + type + `s?query=${encodeURIComponent(q)}` + `&agency=${encodeURIComponent(agencyId)}`;
   }
   const response = await fetch(url);
   const res = await response.json();
@@ -318,7 +318,7 @@ async function handleRouteFormSubmit(event) {
 }
 
 function validateRouteForm() {
-  const agenciesInput = document.getElementById("agencies_name");
+  const agenciesInput = document.getElementById("agency_name");
   const agenciesName = agenciesInput.value;
 
   if (!Array.isArray(window.agencies)) {
@@ -381,9 +381,9 @@ function detectDarkMode() {
 
 scheduleFormEl = document.getElementById("schedule-form");
 routeFormEl = document.getElementById("route-form");
-stationsEl = document.getElementById("stations_name");
-agenciesEl = document.getElementById("agencies_name");
-routesEl = document.getElementById("routes_name");
+stationsEl = document.getElementById("station_name");
+agenciesEl = document.getElementById("agency_name");
+routesEl = document.getElementById("route_name");
 mapEl = document.getElementById("generate-map");
 
 document.getElementById("dark-mode-switch-check").addEventListener("change", darkModeToggle);
