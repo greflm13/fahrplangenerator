@@ -41,8 +41,8 @@
     ]
 
     [project.scripts]
-        fahrplangenerator-cli = "fahrplangenerator.main:main"
         fahrplangenerator-api = "fahrplangenerator.api:main"
+        fahrplangenerator-cli = "fahrplangenerator.main:main"
 
 [dependency-groups]
     dev = ["deptry", "pyinstaller", "ruff"]
