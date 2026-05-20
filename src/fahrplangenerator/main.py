@@ -1,26 +1,25 @@
 #!/usr/bin/env python
 
-import os
-import logging
-import asyncio
 import argparse
+import asyncio
+import logging
+import os
+from importlib.metadata import version
 
-import tqdm
 import PIL.Image
 import questionary
-
+import tqdm
 from rich_argparse import RichHelpFormatter
 
-import modules.utils as utils
-import modules.db as db
+import fahrplangenerator.modules.db as db
+import fahrplangenerator.modules.utils as utils
+from fahrplangenerator.modules.compute import compute, draw_line
+from fahrplangenerator.modules.logger import rotate_log_file, setup_logger
+from fahrplangenerator.modules.map import MAP_PROVIDERS
 
-from modules.map import MAP_PROVIDERS
-from modules.logger import setup_logger, rotate_log_file
-from modules.compute import compute, draw_line
-
-# Constants for file paths and exclusions
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
 PIL.Image.MAX_IMAGE_PIXELS = 9331200000
+
+__version__ = version("fahrplangenerator")
 
 
 custom_style = questionary.Style(
@@ -35,7 +34,7 @@ custom_style = questionary.Style(
 )
 
 
-async def main():
+async def loop():
     parser = argparse.ArgumentParser(formatter_class=RichHelpFormatter)
     parser.add_argument("-i", "--input", help="Input folder(s)", action="extend", nargs="+", default=[], required=False, dest="input")
     parser.add_argument("-c", "--color", help="Timetable color", type=str, required=False, dest="color", default="random")
@@ -44,6 +43,7 @@ async def main():
     parser.add_argument("-s", "--stop-name-csv", help="Stop name mapping csv folder", required=False, type=str, dest="mapping_csv")
     parser.add_argument("-r", "--reset-db", help="Reset local database", action="store_true", dest="reset_db")
     parser.add_argument("-l", "--single-line", help="Draw map of single route", action="store_true")
+    parser.add_argument("-V", "--version", action="version", version="%(prog)s-" + __version__)
     parser.add_argument("--dpi", help="map dpi", type=int, dest="map_dpi")
     parser.add_argument("--no-logo", action="store_false", dest="logo")
     parser.add_argument(
@@ -58,7 +58,7 @@ async def main():
 
     rotate_log_file(compress=True)
     setup_logger()
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
+    logger = logging.getLogger(name="fahrplangenerator")
 
     if args.reset_db:
         append = False
@@ -156,5 +156,9 @@ async def single_line_caller(args):
         await draw_line(route, routename, args)
 
 
+def main():
+    asyncio.run(loop())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

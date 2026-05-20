@@ -1,12 +1,12 @@
-from dataclasses import dataclass
-from typing import List, Optional, Any, Dict, TypeVar, Callable, Type, cast
 from collections import namedtuple
-
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, TypeVar, cast
 
 T = TypeVar("T")
 
 
-def from_list(f: Callable[[Any], T], x: Any) -> List[T]:
+def from_list[T](f: Callable[[Any], T], x: Any) -> list[T]:
     assert isinstance(x, list)
     return [f(y) for y in x]
 
@@ -22,7 +22,7 @@ def from_union(fs, x):
             return f(x)
         except AssertionError:
             pass
-    assert False
+    raise AssertionError()
 
 
 def from_str(x: Any) -> str:
@@ -59,7 +59,7 @@ def from_empty_str(x: Any) -> str | None:
     return x
 
 
-def to_class(c: Type[T], x: Any) -> dict:
+def to_class[T](c: type[T], x: Any) -> dict:
     assert isinstance(x, c)
     return cast(Any, x).to_dict()
 
@@ -69,7 +69,7 @@ def to_float(x: Any) -> float:
     return x
 
 
-def from_dict(f: Callable[[Any], T], x: Any) -> Dict[str, T]:
+def from_dict[T](f: Callable[[Any], T], x: Any) -> dict[str, T]:
     assert isinstance(x, dict)
     return {k: f(v) for (k, v) in x.items()}
 
@@ -80,11 +80,11 @@ class HierarchyStop:
     stop_name: str
     stop_lat: float
     stop_lon: float
-    zone_id: Optional[str] = None
-    location_type: Optional[int] = None
-    parent_station: Optional[str] = None
-    level_id: Optional[str] = None
-    children: Optional[List["HierarchyStop"]] = None
+    zone_id: str | None = None
+    location_type: int | None = None
+    parent_station: str | None = None
+    level_id: str | None = None
+    children: list["HierarchyStop"] | None = None
 
     @staticmethod
     def from_dict(obj: Any) -> "HierarchyStop":
@@ -115,11 +115,11 @@ class HierarchyStop:
         return result
 
 
-def hierarchy_stop_from_dict(s: Any) -> Dict[str, HierarchyStop]:
+def hierarchy_stop_from_dict(s: Any) -> dict[str, HierarchyStop]:
     return from_dict(HierarchyStop.from_dict, s)
 
 
-def hierarchy_stop_to_dict(x: Dict[str, HierarchyStop]) -> Any:
+def hierarchy_stop_to_dict(x: dict[str, HierarchyStop]) -> Any:
     return from_dict(lambda x: to_class(HierarchyStop, x), x)
 
 

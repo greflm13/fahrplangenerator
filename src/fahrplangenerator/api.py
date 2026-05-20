@@ -1,27 +1,25 @@
 #!/usr/bin/env python
 
+import asyncio
+import base64
+import gc
+import logging
 import os
 import re
-import gc
-import time
-import base64
-import asyncio
-import logging
 import tempfile
-
-from typing import Annotated, Optional
-
-from fastapi import FastAPI, HTTPException, Form, Query
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field, ConfigDict
+import time
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-import modules.utils as utils
-import modules.db as db
+from fastapi import FastAPI, Form, HTTPException, Query
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
-from modules.compute import compute, draw_line
-from modules.map import MAP_PROVIDERS
-from modules.logger import rotate_log_file, setup_logger
+import fahrplangenerator.modules.db as db
+import fahrplangenerator.modules.utils as utils
+from fahrplangenerator.modules.compute import compute, draw_line
+from fahrplangenerator.modules.logger import rotate_log_file, setup_logger
+from fahrplangenerator.modules.map import MAP_PROVIDERS
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -173,7 +171,7 @@ class RootResponse(BaseModel):
 class StationsRequest(BaseModel):
     """Request model for available stations"""
 
-    query: Optional[str] = Field(default=None, description="Search query for station names")
+    query: str | None = Field(default=None, description="Search query for station names")
 
 
 class StationsResponse(BaseModel):
@@ -186,7 +184,7 @@ class StationsResponse(BaseModel):
 class AgenciesRequest(BaseModel):
     """Request model for available agencies"""
 
-    query: Optional[str] = Field(default=None, description="Search query for agency names")
+    query: str | None = Field(default=None, description="Search query for agency names")
 
 
 class AgenciesResponse(BaseModel):
@@ -200,7 +198,7 @@ class RoutesRequest(BaseModel):
     """Request model for routes of agency"""
 
     agency: str = Field(..., description="Agency name for which to get routes")
-    query: Optional[str] = Field(default=None, description="Search query for route names")
+    query: str | None = Field(default=None, description="Search query for route names")
 
 
 class Route(BaseModel):
@@ -410,7 +408,7 @@ async def generate_timetable(request: Annotated[FahrplanRequest, Form()]):
         raise
     except Exception as e:
         logger.error("Error generating timetable: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}") from e
 
 
 @app.post("/route", response_model=FahrplanResponse)
@@ -472,7 +470,7 @@ async def generate_route_map(request: Annotated[RouteRequest, Form()]):
         raise
     except Exception as e:
         logger.error("Error generating timetable: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating timetable: {str(e)}") from e
 
 
 @app.get("/stations", response_model=StationsResponse)
@@ -493,7 +491,7 @@ async def get_available_stations(request: Annotated[StationsRequest, Query()]):
         return {"total": len(stations), "data": stations}
     except Exception as e:
         logger.error("Error fetching stations: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching stations: {str(e)}") from e
 
 
 @app.get("/agencies", response_model=AgenciesResponse)
@@ -512,7 +510,7 @@ async def get_available_agencies(request: Annotated[AgenciesRequest, Query()]):
         return {"total": len(agencies), "data": agencies}
     except Exception as e:
         logger.error("Error fetching agencies: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Error fetching agencies: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching agencies: {str(e)}") from e
 
 
 @app.get("/routes", response_model=RoutesResponse)
@@ -537,7 +535,7 @@ async def get_available_routes(request: Annotated[RoutesRequest, Query()]):
         return {"total": len(routes), "data": routes}
     except Exception as e:
         logger.error("Error fetching routes: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Error fetching routes: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching routes: {str(e)}") from e
 
 
 @app.get("/map-providers", response_model=MapProvidersResponse)
@@ -566,9 +564,13 @@ async def get_info():
     }
 
 
-if __name__ == "__main__":
+def main():
     import uvicorn
 
     rotate_log_file(compress=True)
     setup_logger()
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+if __name__ == "__main__":
+    main()

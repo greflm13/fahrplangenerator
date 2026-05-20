@@ -1,21 +1,16 @@
-import os
-import io
-import math
 import asyncio
+import io
 import logging
-
-from typing import Tuple
+import math
+import os
+from pathlib import Path
 
 import aiohttp
 import numpy as np
-
+from matplotlib.axes import Axes
 from PIL import Image
 from pyproj import Transformer
-from matplotlib.axes import Axes
 from xyzservices import TileProvider
-
-# Constants for file paths and exclusions
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
 
 _TILE_MEM_CACHE: dict[tuple, Image.Image] = {}
 
@@ -28,10 +23,10 @@ DEFAULT_ZOOM_LIMITS = (0, 19)
 WGS84_TO_MERCATOR = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
 MERCATOR_TO_WGS84 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
 
-logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
+logger = logging.getLogger(name="fahrplangenerator")
 
 
-def lonlat_to_tile(lon: float, lat: float, zoom: int) -> Tuple[int, int]:
+def lonlat_to_tile(lon: float, lat: float, zoom: int) -> tuple[int, int]:
     lat = max(min(lat, 85.05112878), -85.05112878)
     lat_rad = math.radians(lat)
     n = 2**zoom
@@ -40,7 +35,7 @@ def lonlat_to_tile(lon: float, lat: float, zoom: int) -> Tuple[int, int]:
     return x, y
 
 
-def tile_to_lonlat(x: int, y: int, zoom: int) -> Tuple[float, float]:
+def tile_to_lonlat(x: int, y: int, zoom: int) -> tuple[float, float]:
     n = 2**zoom
     lon = x / n * 360.0 - 180.0
     lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
@@ -55,7 +50,7 @@ def get_tile_scale(provider: TileProvider) -> int:
     return 1
 
 
-def auto_zoom(bounds_wgs84: Tuple[float, float, float, float], axis_pixel_size: Tuple[int, int], provider: TileProvider, zoom_modifier=0) -> int:
+def auto_zoom(bounds_wgs84: tuple[float, float, float, float], axis_pixel_size: tuple[int, int], provider: TileProvider, zoom_modifier=0) -> int:
     xmin, xmax, ymin, ymax = bounds_wgs84
     width_px, height_px = axis_pixel_size
 
@@ -79,18 +74,12 @@ def auto_zoom(bounds_wgs84: Tuple[float, float, float, float], axis_pixel_size: 
 
 
 class TileCache:
-    def __init__(self, root: str):
-        self.root = root
-        os.makedirs(root, exist_ok=True)
+    def __init__(self, root: str | Path):
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
 
-    def tile_path(self, provider: TileProvider, z: int, x: int, y: int) -> str:
-        return os.path.join(
-            self.root,
-            provider.name.replace(".", "_"),
-            str(z),
-            str(x),
-            f"{y}.png",
-        )
+    def tile_path(self, provider: TileProvider, z: int, x: int, y: int) -> Path:
+        return self.root / provider.name.replace(".", "_") / str(z) / str(x) / f"{y}.png"
 
     async def load(self, provider: TileProvider, z: int, x: int, y: int) -> Image.Image | None:
         key = (provider.name, z, x, y)
@@ -98,7 +87,7 @@ class TileCache:
             return _TILE_MEM_CACHE[key]
 
         path = self.tile_path(provider, z, x, y)
-        if os.path.exists(path):
+        if path.exists():
             loop = asyncio.get_running_loop()
             img = await loop.run_in_executor(None, lambda: Image.open(path).convert("RGBA"))
             _TILE_MEM_CACHE[key] = img
@@ -107,7 +96,8 @@ class TileCache:
 
     async def save(self, provider: TileProvider, z: int, x: int, y: int, img: Image.Image) -> None:
         path = self.tile_path(provider, z, x, y)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: img.save(path, format="PNG"))
 
@@ -186,14 +176,17 @@ def draw_attribution(ax, provider: TileProvider) -> None:
 
 async def render_basemap(
     ax: Axes,
-    extends: Tuple[float, float, float, float],
+    extends: tuple[float, float, float, float],
     zoom: int | None,
     provider: TileProvider,
-    cache_dir: str,
+    cache_dir: str | Path,
     show_attribution: bool = True,
     zoom_modifier=0,
-    max_workers=min(8, os.cpu_count() * 2),  # type: ignore
+    max_workers: int | None = None,
 ) -> None:
+    if max_workers is None:
+        max_workers = min(8, (os.cpu_count() or 1) * 2)
+
     try:
         xmin, xmax, ymin, ymax = extends
 

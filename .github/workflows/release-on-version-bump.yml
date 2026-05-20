@@ -1,0 +1,166 @@
+name: release-on-version-bump
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+      tag: ${{ steps.detect.outputs.tag }}
+      version: ${{ steps.detect.outputs.version }}
+      name: ${{ steps.name.outputs.name }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Detect project name and export it
+        id: name
+        run: |
+          PROJECT_NAME=$(python -c '
+          import tomllib
+          with open("pyproject.toml", "rb") as f:
+          	print(tomllib.load(f)["project"]["name"])
+          ')
+          echo "name=$PROJECT_NAME" >>"$GITHUB_OUTPUT"
+
+      - name: Detect previous version and tag it
+        id: detect
+        run: |
+          set -euo pipefail
+                  
+          CURRENT_VERSION=$(python -c '
+          import tomllib
+          with open("pyproject.toml", "rb") as f:
+          	print(tomllib.load(f)["project"]["version"])
+          ')
+
+          echo "Current version: $CURRENT_VERSION"
+
+          LAST_COMMIT_OF_PREV=""
+          PREV_VERSION=""
+          PREV_COMMIT=""
+
+          for COMMIT in $(git rev-list HEAD); do
+          	VERSION_AT_COMMIT=$(git show "$COMMIT:pyproject.toml" 2>/dev/null | python -c '
+          import sys, tomllib
+          try:
+          	print(tomllib.loads(sys.stdin.read())["project"]["version"])
+          except Exception:
+          	pass')
+
+          	[ -z "$VERSION_AT_COMMIT" ] && continue
+
+          	if [ "$VERSION_AT_COMMIT" != "$CURRENT_VERSION" ]; then
+          		PREV_VERSION="$VERSION_AT_COMMIT"
+          		LAST_COMMIT_OF_PREV="$PREV_COMMIT"
+          		break
+          	fi
+
+          	PREV_COMMIT="$COMMIT"
+          done
+
+          if [ -z "$PREV_VERSION" ]; then
+          	echo "No previous version found"
+          	echo "changed=false" >>"$GITHUB_OUTPUT"
+          	exit 0
+          fi
+
+          echo "Previous version: $PREV_VERSION"
+          echo "Last commit of previous version: $LAST_COMMIT_OF_PREV"
+
+          TAG="v$PREV_VERSION"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+          	echo "Tag $TAG already exists"
+          	echo "changed=false" >>"$GITHUB_OUTPUT"
+          	exit 0
+          fi
+
+          git tag "$TAG" "$LAST_COMMIT_OF_PREV"
+          git push origin "$TAG"
+
+          echo "changed=true" >>"$GITHUB_OUTPUT"
+          echo "tag=$TAG" >>"$GITHUB_OUTPUT"
+          echo "version=$PREV_VERSION" >>"$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        if: steps.detect.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.detect.outputs.tag }}
+          draft: true
+          prerelease: false
+
+  build:
+    needs: version
+    if: needs.version.outputs.changed == 'true'
+    strategy:
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - windows-latest
+          - windows-11-arm
+          - macos-15-intel
+          - macos-latest
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install . --group dev
+
+      - name: Build package
+        shell: bash
+        run: |
+          pyinstaller build.spec
+
+      - name: Upload asset to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          files: dist/${{ needs.version.outputs.name }}*
+          draft: true
+
+  release:
+    needs:
+      - version
+      - build
+    runs-on: ubuntu-latest
+    if: needs.version.outputs.changed == 'true'
+    steps:
+      - name: Finalize release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          draft: false
+          make_latest: true
+          generate_release_notes: true

@@ -1,14 +1,22 @@
-import os
 import csv
-
+import os
+import platform
 from collections import namedtuple
+from pathlib import Path
 
 import aiosqlite
 
-
 _namedtuple_cache = {}
 
-DB_PATH = "gtfs.db"
+
+if platform.system() != "Windows":
+    base = Path(os.getenv("XDG_CACHE_HOME", Path.home() / ".cache"))
+    CACHE_DIR = base / "fahrplangenerator"
+else:
+    CACHE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "fahrplangenerator" / "cache"
+
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = CACHE_DIR / "gtfs.db"
 
 PRIMARY_KEYS = {
     "agency": "agency_id",
@@ -75,7 +83,7 @@ async def load_gtfs(folder: str, agency_id: int, append=True) -> None:
                 typ, ext = os.path.splitext(os.path.basename(file))
                 if ext == ".txt":
                     data_path = os.path.join(folder, file)
-                    with open(data_path, "r", encoding="utf-8-sig") as f:
+                    with open(data_path, encoding="utf-8-sig") as f:
                         csvdata = list(csv.reader(f, skipinitialspace=True))
                     header = csvdata[0]
                     id_col_indices = {i for i, col in enumerate(header) if col.endswith("_id") or col == "parent_station" or col == "feed_publisher_name"}
@@ -112,7 +120,7 @@ async def load_hst_csv(file: str, append=True) -> None:
         for file in os.listdir(data_path):
             if not file.endswith(".csv"):
                 continue
-            with open(os.path.join(data_path, file), "r", encoding="utf-8-sig") as f:
+            with open(os.path.join(data_path, file), encoding="utf-8-sig") as f:
                 csvdata = list(csv.reader(f, skipinitialspace=True))
             header = csvdata[0]
             data = csvdata[1:]

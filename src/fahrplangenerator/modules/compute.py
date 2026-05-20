@@ -1,27 +1,24 @@
-import os
 import logging
+import os
 import tempfile
 from typing import Any
 
 import PIL.Image
-import tqdm
 import requests
-
-from reportlab.pdfgen.canvas import Canvas
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
+import tqdm
 from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen.canvas import Canvas
 from shapely.geometry import LineString, Point
 
-import modules.utils as utils
-import modules.db as db
-
-from modules.map import draw_map
-from modules.datatypes import HierarchyStop, Routedata, Stop, Shape
+import fahrplangenerator.modules.db as db
+import fahrplangenerator.modules.utils as utils
+from fahrplangenerator.modules.datatypes import HierarchyStop, Routedata, Stop
+from fahrplangenerator.modules.map import draw_map
 
 # Constants for file paths and exclusions
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
 PIL.Image.MAX_IMAGE_PIXELS = 9331200000
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -38,9 +35,11 @@ def addtimes(
     posy: float,
     accent: colors.Color,
     dest: str,
-    addstops: dict[str, int] = {"num": 1},
+    addstops: dict[str, int] | None = None,
 ):
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
+    if addstops is None:
+        addstops = {"num": 1}
+    logger = logging.getLogger(name="fahrplangenerator")
     logger.info(f"Add {day}")
 
     pdg = pdf
@@ -137,8 +136,10 @@ def create_page(
     suntimes: dict[str, list[Routedata]],
     color: str,
     logo: tempfile._TemporaryFileWrapper | str | None = "</srgn>",
-    logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
+    logger: logging.Logger | None = None,
 ):
+    if logger is None:
+        logger = logging.getLogger(name="fahrplangenerator")
     logger.info(f"Create page for {line} - {dest}")
 
     limit = sum(max((len(v) for v in day.values()), default=0) for day in (montimes, sattimes, suntimes))
@@ -267,8 +268,10 @@ async def compute(
     destinations: dict[str, dict[str, str]],
     loadingbars: bool = True,
     zoom_modifier=0,
-    logger=logging.getLogger(name=os.path.basename(SCRIPTDIR)),
+    logger: logging.Logger | None = None,
 ):
+    if logger is None:
+        logger = logging.getLogger(name="fahrplangenerator")
     logger.info("Computing times for %s", stop_name)
     stopids = [stop.stop_id for stop in ourstops]
     ourtimes = await db.get_in_filtered_data("stop_times", column="stop_id", values=stopids)
@@ -474,7 +477,9 @@ async def compute(
     return args.output
 
 
-async def draw_line(route_id: str, route_name: str, args, zoom_modifier=0, logger=logging.getLogger(name=os.path.basename(SCRIPTDIR))):
+async def draw_line(route_id: str, route_name: str, args, zoom_modifier=0, logger: logging.Logger | None = None):
+    if logger is None:
+        logger = logging.getLogger(name="fahrplangenerator")
     if args.color == "random":
         color = utils.generate_contrasting_vibrant_color()
     else:

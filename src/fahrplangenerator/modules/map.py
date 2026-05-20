@@ -1,30 +1,25 @@
-import os
-import math
 import logging
+import math
+import os
 import tempfile
 
-from typing import List, Dict, Optional
-
-import matplotlib
 import geopandas as gpd
+import matplotlib
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
-
-from matplotlib.axes import Axes
-from shapely.geometry import Point
 from adjustText import adjust_text
+from matplotlib.axes import Axes
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
-from reportlab.pdfgen.canvas import Canvas
+from matplotlib.patches import FancyArrowPatch
 from reportlab.lib import colors, pagesizes
 from reportlab.lib.utils import ImageReader
-from matplotlib.patches import FancyArrowPatch
+from reportlab.pdfgen.canvas import Canvas
+from shapely.geometry import Point
 from xyzservices import TileProvider, providers
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-from modules.xyz_basemap import render_basemap
-
-# Constants for file paths and exclusions
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
+from fahrplangenerator.modules.db import CACHE_DIR
+from fahrplangenerator.modules.xyz_basemap import render_basemap
 
 MAP_PROVIDERS = {
     "BasemapAT": providers.BasemapAT.highdpi,
@@ -46,8 +41,8 @@ def points_to_data_offset(ax, dx_pt, dy_pt):
     return x1 - x0, y1 - y0
 
 
-def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = None, min_size: int = 3, max_size: int = 60) -> None:
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
+def add_direction_arrows(ax: Axes, shapes: list, arrow_color: str | None = None, min_size: int = 3, max_size: int = 60) -> None:
+    logger = logging.getLogger(name="fahrplangenerator")
     try:
         for p in list(ax.patches):
             if getattr(p, "_is_direction_arrow", False):
@@ -135,7 +130,7 @@ def add_direction_arrows(ax: Axes, shapes: list, arrow_color: Optional[str] = No
                         zorder=5,
                         transform=ax.transData,
                     )
-                    setattr(arrow, "_is_direction_arrow", True)
+                    arrow._is_direction_arrow = True  # type: ignore
                     ax.add_patch(arrow)
                 except Exception as exc:
                     logger.debug("Arrow failed: %s", exc)
@@ -171,8 +166,10 @@ async def draw_map(
     padding: int = 15,
     zoom_modifier: int = 0,
     tmpdir: str = tempfile.gettempdir(),
-    logger: logging.Logger = logging.getLogger(name=os.path.basename(SCRIPTDIR)),
+    logger: logging.Logger | None = None,
 ) -> str | None:
+    if logger is None:
+        logger = logging.getLogger(name="fahrplangenerator")
     fig = Figure(figsize=(10, 10))
     canvas = FigureCanvasAgg(fig)
     ax = fig.add_subplot()
@@ -257,7 +254,7 @@ async def draw_map(
             extends=(xmin, xmax, ymin, ymax),
             zoom=zoom_param,
             provider=get_provider_source(map_provider),
-            cache_dir=os.path.join(SCRIPTDIR, "__pycache__"),
+            cache_dir=CACHE_DIR,
             zoom_modifier=zoom_modifier,
         )
         logger.info("Added basemap for %s", stop_name)
@@ -309,9 +306,9 @@ async def draw_map(
 
 def plot_stops_on_ax(
     ax: Axes,
-    stops: List,
+    stops: list,
     line_color: str,
-    endstops: List[str],
+    endstops: list[str],
     marker_size: int = 30,
     label_fontsize: int = 7,
     label_rotation: int = 0,
@@ -323,7 +320,7 @@ def plot_stops_on_ax(
 
     Returns the number of plotted stops.
     """
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
+    logger = logging.getLogger(name="fahrplangenerator")
     try:
         rgb = mcolors.to_rgb(line_color)
         stop_rgb = tuple(max(0.0, c * 0.5) for c in rgb)

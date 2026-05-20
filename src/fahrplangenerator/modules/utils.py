@@ -1,32 +1,41 @@
-import os
 import copy
-import random
 import logging
-
-from typing import Any, Dict, Iterable, List, Set, Tuple, NamedTuple
+import os
+import random
+import sys
 from collections import defaultdict
+from collections.abc import Iterable
+from importlib.resources import as_file, files
+from pathlib import Path
+from typing import Any
 
-import tqdm
 import pandas as pd
-
-from svglib.svglib import Drawing
+import tqdm
 from geopy.geocoders import Photon
 from pypdf import PdfReader, PdfWriter
-from shapely.geometry import Point, LineString
+from shapely.geometry import LineString, Point
+from svglib.svglib import Drawing
 
-from modules.datatypes import HierarchyStop, Shape, Stop, Routedata
-from modules.db import update_location_cache, get_table_data, get_most_frequent_values, get_in_filtered_data_iter
-
-SCRIPTDIR = os.path.dirname(os.path.realpath(__file__)).removesuffix(__package__ if __package__ else "")
-CACHEDIR = os.path.join(SCRIPTDIR, "__pycache__")
+from fahrplangenerator.modules.datatypes import HierarchyStop, Routedata, Shape, Stop
+from fahrplangenerator.modules.db import get_in_filtered_data_iter, get_most_frequent_values, get_table_data, update_location_cache
 
 geolocator = Photon(user_agent="fahrplan.py")
 
 
-def load_gtfs(folder: str, type: str) -> List[Dict]:
+def resource_path(*parts: str) -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS).joinpath(*parts)  # type: ignore
+
+    res = files("fahrplangenerator").joinpath(*parts)
+
+    with as_file(res) as actual_path:
+        return actual_path
+
+
+def load_gtfs(folder: str, type: str) -> list[dict]:
     """Load GTFS data."""
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
-    data: List[Dict] = []
+    logger = logging.getLogger(name="fahrplangenerator")
+    data: list[dict] = []
     if os.path.isdir(folder):
         data_path = os.path.join(folder, type + ".txt")
         logger.info("Loading GTFS from %s", data_path)
@@ -41,10 +50,10 @@ def load_gtfs(folder: str, type: str) -> List[Dict]:
     return data
 
 
-async def build_shapedict(shape_ids: List[str]) -> Dict[str, List[Point]]:
+async def build_shapedict(shape_ids: list[str]) -> dict[str, list[Point]]:
     """Build a dictionary mapping shape_id to list of Point geometries."""
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
-    shapedict: Dict[str, List] = defaultdict(list)
+    logger = logging.getLogger(name="fahrplangenerator")
+    shapedict: dict[str, list] = defaultdict(list)
     shapeids = list(set(shape_ids))
     logger.info("Building shapedict", extra={"shapes": shapeids})
     async for shapeline in await get_in_filtered_data_iter("shapes", column="shape_id", values=shapeids):
@@ -57,20 +66,20 @@ async def build_shapedict(shape_ids: List[str]) -> Dict[str, List[Point]]:
     return dict(shapedict)
 
 
-def build_list_index(list: List, index: str) -> Dict[str, Any]:
+def build_list_index(list: list, index: str) -> dict[str, Any]:
     """Build an index from a list of namedtuples based on a specified key."""
-    data: Dict[str, Any] = {}
+    data: dict[str, Any] = {}
     for item in list:
         data[getattr(item, index)] = item
     return data
 
 
-async def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
+async def build_stop_times_index(trip_ids: list[str]) -> dict[str, list]:
     """Index stop_times by trip_id for quick lookup."""
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
-    idx: Dict[str, List] = {}
+    logger = logging.getLogger(name="fahrplangenerator")
+    idx: dict[str, list] = {}
     async for st in await get_in_filtered_data_iter("stop_times", column="trip_id", values=trip_ids):
-        tid = getattr(st, "trip_id")
+        tid = st.trip_id
         if not tid:
             continue
         idx.setdefault(tid, []).append(st)
@@ -78,11 +87,11 @@ async def build_stop_times_index(trip_ids: List[str]) -> Dict[str, List]:
     return idx
 
 
-async def prepare_linedraw_info(stop_times: Dict[str, List], trips: Iterable, stops: Dict[str, Any], line, direction, ourstop: List[str]):
+async def prepare_linedraw_info(stop_times: dict[str, list], trips: Iterable, stops: dict[str, Any], line, direction, ourstop: list[str]):
     """Prepare line drawing information for selected shapes."""
-    shapes: Set[Shape] = set()
-    stop_points: Set[Tuple] = set()
-    end_stop_names: Set[str] = set()
+    shapes: set[Shape] = set()
+    stop_points: set[tuple] = set()
+    end_stop_names: set[str] = set()
     for trip in trips:
         if trip.route_id == line and "d" + trip.direction_id == direction:
             if trip.shape_id != "":
@@ -115,7 +124,7 @@ async def prepare_linedraw_info(stop_times: Dict[str, List], trips: Iterable, st
     return linedrawinfo
 
 
-def create_merged_pdf(pages: List[str], path: str):
+def create_merged_pdf(pages: list[str], path: str):
     output = PdfWriter()
 
     for page in pages:
@@ -126,7 +135,7 @@ def create_merged_pdf(pages: List[str], path: str):
     output.write(path)
 
 
-def merge_dicts(a: Dict[str, Dict[str, Dict[str, List[Routedata]]]], b: Dict[str, Dict[str, Dict[str, List[Routedata]]]]):
+def merge_dicts(a: dict[str, dict[str, dict[str, list[Routedata]]]], b: dict[str, dict[str, dict[str, list[Routedata]]]]):
     c = copy.deepcopy(a)
     for k, v in b.items():
         if k in a:
@@ -144,7 +153,7 @@ def merge_dicts(a: Dict[str, Dict[str, Dict[str, List[Routedata]]]], b: Dict[str
     return c
 
 
-def dict_set(lst: List[Routedata]) -> List[Routedata]:
+def dict_set(lst: list[Routedata]) -> list[Routedata]:
     seen = []
     setlike = []
     for d in lst:
@@ -155,7 +164,7 @@ def dict_set(lst: List[Routedata]) -> List[Routedata]:
     return setlike
 
 
-def most_frequent(lst: List[str]):
+def most_frequent(lst: list[str]):
     counts = {i: lst.count(i) for i in set(lst)}
     max_count = max(counts.values(), default=0)
     if max_count == 1:
@@ -171,7 +180,7 @@ def remove_suffix(text: str) -> str:
     return " ".join(sp)
 
 
-def merge(lst: List[str]):
+def merge(lst: list[str]):
     rl = []
     for i in lst:
         rl.append(remove_suffix(i))
@@ -213,12 +222,12 @@ def generate_contrasting_vibrant_color():
             return color
 
 
-async def build_stop_hierarchy() -> Dict[str, HierarchyStop]:
-    hierarchy: Dict[str, HierarchyStop] = {}
+async def build_stop_hierarchy() -> dict[str, HierarchyStop]:
+    hierarchy: dict[str, HierarchyStop] = {}
 
     all_stops = await get_table_data("stops")
 
-    children_by_parent: Dict[str, List] = {}
+    children_by_parent: dict[str, list] = {}
     parent_stops = []
 
     for stop in all_stops:
@@ -240,15 +249,15 @@ async def build_stop_hierarchy() -> Dict[str, HierarchyStop]:
     return hierarchy
 
 
-def get_place(coords: Tuple[float, float]):
+def get_place(coords: tuple[float, float]):
     try:
         return geolocator.reverse(coords).raw["properties"]  # type: ignore
     except Exception:
         return {}
 
 
-async def query_stop_names(stop_hierarchy: Dict[str, HierarchyStop], loadingbars=True) -> Dict[str, HierarchyStop]:
-    logger = logging.getLogger(name=os.path.basename(SCRIPTDIR))
+async def query_stop_names(stop_hierarchy: dict[str, HierarchyStop], loadingbars=True) -> dict[str, HierarchyStop]:
+    logger = logging.getLogger(name="fahrplangenerator")
     try:
         locationcache = await get_table_data("location_cache")
         locationcache = {entry.stop_id: entry.name for entry in locationcache}
@@ -344,7 +353,7 @@ async def get_stop_name(stop_id: str) -> str:
     return rows[0]
 
 
-async def build_dest_list() -> Dict[str, Dict[str, str]]:
+async def build_dest_list() -> dict[str, dict[str, str]]:
     destinations = {}
     for trip in await get_table_data("trips", columns=["route_id", "direction_id"], distinct=True):
         if trip.route_id not in destinations:
@@ -354,19 +363,19 @@ async def build_dest_list() -> Dict[str, Dict[str, str]]:
     return destinations
 
 
-def map_agency_ids(agencies: List) -> Dict[str, List[str]]:
+def map_agency_ids(agencies: list) -> dict[str, list[str]]:
     agencies.sort(key=lambda x: x.agency_name)
-    merged_agencies: Dict[str, List[str]] = {}
+    merged_agencies: dict[str, list[str]] = {}
     for a in agencies:
         merged_agencies.setdefault(a.agency_name, []).append(a.agency_id)
     return merged_agencies
 
 
-def build_route_index(routes: List) -> Dict[str, List]:
+def build_route_index(routes: list) -> dict[str, list]:
     """Index routes by agency_id for quick lookup."""
-    idx: Dict[str, List] = {}
+    idx: dict[str, list] = {}
     for route in routes:
-        aid = getattr(route, "agency_id")
+        aid = route.agency_id
         if not aid:
             continue
         idx.setdefault(aid, []).append(route)
