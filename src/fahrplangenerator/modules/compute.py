@@ -18,14 +18,13 @@ import fahrplangenerator.modules.utils as utils
 from fahrplangenerator.modules.datatypes import HierarchyStop, Routedata, Stop
 from fahrplangenerator.modules.map import draw_map
 
-# Constants for file paths and exclusions
 PIL.Image.MAX_IMAGE_PIXELS = 9331200000
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-pdfmetrics.registerFont(TTFont("header", "FiraSans-Black.ttf"))
-pdfmetrics.registerFont(TTFont("hour", "FiraSans-Bold.ttf"))
-pdfmetrics.registerFont(TTFont("add", "FiraSans-Regular.ttf"))
-pdfmetrics.registerFont(TTFont("foot", "FiraSans-Thin.ttf"))
+pdfmetrics.registerFont(TTFont("header", utils.resource_path("assets", "fonts", "Fira_Sans", "FiraSans-Black.ttf")))
+pdfmetrics.registerFont(TTFont("hour", utils.resource_path("assets", "fonts", "Fira_Sans", "FiraSans-Bold.ttf")))
+pdfmetrics.registerFont(TTFont("add", utils.resource_path("assets", "fonts", "Fira_Sans", "FiraSans-Regular.ttf")))
+pdfmetrics.registerFont(TTFont("foot", utils.resource_path("assets", "fonts", "Fira_Sans", "FiraSans-Thin.ttf")))
 
 
 def addtimes(

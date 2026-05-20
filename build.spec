@@ -10,7 +10,7 @@ with open("pyproject.toml", "rb") as f:
 build_os = platform.system().lower()
 build_arch = platform.machine()
 
-datas = []
+datas = [("src/fahrplangenerator/assets", "assets")]
 hiddenimports = collect_submodules("modules")
 
 a_cli = Analysis(
