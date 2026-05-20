@@ -116,7 +116,6 @@ jobs:
           - ubuntu-latest
           - ubuntu-24.04-arm
           - windows-latest
-          - windows-11-arm
           - macos-15-intel
           - macos-latest
 
@@ -132,27 +131,6 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-      - name: Install GDAL (Linux)
-        if: startsWith(matrix.runner, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gdal-bin libgdal-dev
-          echo "GDAL_VERSION=$(gdal-config --version)" >> $GITHUB_ENV
-
-      - name: Install GDAL (macOS)
-        if: startsWith(matrix.runner, 'macos')
-        run: |
-          brew install gdal
-          echo "GDAL_VERSION=$(gdal-config --version)" >> $GITHUB_ENV
-
-      - name: Install GDAL (Windows)
-        if: startsWith(matrix.runner, 'windows')
-        shell: pwsh
-        run: |
-          choco install gdal -y
-          $env:GDAL_VERSION = (gdalinfo --version).Split()[1]
-          echo "GDAL_VERSION=$env:GDAL_VERSION" >> $env:GITHUB_ENV
 
       - name: Install dependencies
         run: |
