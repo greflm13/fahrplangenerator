@@ -11,7 +11,7 @@ build_os = platform.system().lower()
 build_arch = platform.machine()
 
 datas = [("src/fahrplangenerator/assets", "assets")]
-hiddenimports = collect_submodules("modules")
+hiddenimports = collect_submodules("fahrplangenerator.modules")
 
 a_cli = Analysis(
     ["src/fahrplangenerator/main.py"],
