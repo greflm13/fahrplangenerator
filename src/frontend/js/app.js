@@ -337,11 +337,9 @@ function validateRouteForm() {
 
 function darkMode() {
   const customColor = document.getElementsByName("color")[1];
-  if (!customColor.checked) {
-    const colorPicker = document.getElementById("color");
-    const color = generateContrastingVibrantColor("dark");
-    colorPicker.value = color;
-  }
+  const colorPicker = document.getElementById("color");
+  const color = generateContrastingVibrantColor("dark");
+  colorPicker.value = color;
   document.documentElement.style.setProperty("--acc-color", color);
   document.documentElement.style.setProperty("--text-color", "#bfbfbf");
   document.documentElement.style.setProperty("--alt-color", "black");
@@ -350,11 +348,9 @@ function darkMode() {
 }
 function lightMode() {
   const customColor = document.getElementsByName("color")[1];
-  if (!customColor.checked) {
-    const colorPicker = document.getElementById("color");
-    const color = generateContrastingVibrantColor();
-    colorPicker.value = color;
-  }
+  const colorPicker = document.getElementById("color");
+  const color = generateContrastingVibrantColor();
+  colorPicker.value = color;
   document.documentElement.style.setProperty("--acc-color", color);
   document.documentElement.style.setProperty("--text-color", "black");
   document.documentElement.style.setProperty("--alt-color", "white");
