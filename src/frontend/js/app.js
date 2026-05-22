@@ -338,9 +338,9 @@ function validateRouteForm() {
 function darkMode() {
   const customColor = document.getElementsByName("color")[1];
   const colorPicker = document.getElementById("color");
-  if (customColor.checked == false) {
+  // if (customColor.checked == false) {
     const color = generateContrastingVibrantColor("dark");
-  }
+  // }
   document.documentElement.style.setProperty("--acc-color", color);
   document.documentElement.style.setProperty("--text-color", "#bfbfbf");
   document.documentElement.style.setProperty("--alt-color", "black");
@@ -351,9 +351,9 @@ function darkMode() {
 function lightMode() {
   const customColor = document.getElementsByName("color")[1];
   const colorPicker = document.getElementById("color");
-  if (customColor.checked == false) {
-    const color = generateContrastingVibrantColor("dark");
-  }
+  // if (customColor.checked == false) {
+    const color = generateContrastingVibrantColor("light");
+  // }
   document.documentElement.style.setProperty("--acc-color", color);
   document.documentElement.style.setProperty("--text-color", "black");
   document.documentElement.style.setProperty("--alt-color", "white");
