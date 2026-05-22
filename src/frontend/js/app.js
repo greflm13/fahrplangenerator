@@ -338,24 +338,28 @@ function validateRouteForm() {
 function darkMode() {
   const customColor = document.getElementsByName("color")[1];
   const colorPicker = document.getElementById("color");
-  const color = generateContrastingVibrantColor("dark");
-  colorPicker.value = color;
+  if (!customColor.checked) {
+    const color = generateContrastingVibrantColor("dark");
+  }
   document.documentElement.style.setProperty("--acc-color", color);
   document.documentElement.style.setProperty("--text-color", "#bfbfbf");
   document.documentElement.style.setProperty("--alt-color", "black");
   document.documentElement.style.setProperty("--bg-color", "#0f0f0f");
   document.documentElement.style.setProperty("--overlay-color", "#0f0f0fcc");
+  colorPicker.value = color;
 }
 function lightMode() {
   const customColor = document.getElementsByName("color")[1];
   const colorPicker = document.getElementById("color");
-  const color = generateContrastingVibrantColor();
-  colorPicker.value = color;
+  if (!customColor.checked) {
+    const color = generateContrastingVibrantColor("dark");
+  }
   document.documentElement.style.setProperty("--acc-color", color);
   document.documentElement.style.setProperty("--text-color", "black");
   document.documentElement.style.setProperty("--alt-color", "white");
   document.documentElement.style.setProperty("--bg-color", "#fafafa");
   document.documentElement.style.setProperty("--overlay-color", "#fafafacc");
+  colorPicker.value = color;
 }
 
 function darkModeToggle(mode) {
