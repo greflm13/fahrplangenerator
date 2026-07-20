@@ -114,7 +114,7 @@ def setup_logger(level=logging.INFO):
     ]
 
     custom_format = " ".join(log_format(supported_keys))
-    formatter = jsonlogger.JsonFormatter(custom_format)
+    formatter = jsonlogger.JsonFormatter(custom_format, timestamp=True, rename_fields={"levelname": "level"})
 
     log_handler = logging.FileHandler(LATEST_LOG_FILE)
     log_handler.setFormatter(formatter)

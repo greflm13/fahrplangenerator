@@ -35,9 +35,8 @@
                 "name": "Python Debugger: fahrplan.py",
                 "type": "debugpy",
                 "request": "launch",
-                "program": "fahrplan.py",
+                "module": "fahrplangenerator.main",
                 "console": "integratedTerminal",
-                "python": "/home/user/.pyenv/versions/fahrplangenerator/bin/python",
                 "args": [
                     // "-i",
                     // "/home/user/Documents/20260102-2110-at-styria-2026/gkb-at",
@@ -66,10 +65,10 @@
                 ]
             },
             {
-                "name": "Python Debugger: api.py",
+                "name": "Python Debugger: api",
                 "type": "debugpy",
                 "request": "launch",
-                "program": "api.py",
+                "module": "fahrplangenerator.api",
                 "console": "integratedTerminal",
                 "args": []
             }

@@ -10,9 +10,11 @@ rebuild: clean build
 
 install:
 	pip install .
+	ln -s $(HOME)/.local/state/fahrplangenerator logs
 
 dev:
 	pip install -e . --group dev
+	ln -s $(HOME)/.local/state/fahrplangenerator logs
 
 lint:
 	ruff check .
