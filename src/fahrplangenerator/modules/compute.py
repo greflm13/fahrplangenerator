@@ -408,7 +408,7 @@ async def compute(
                     page = pages.get(line, {}).get(k, {})
                     if not isinstance(page, str):
                         page = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
-                    logger.info("Creating page for %s", stop_name)
+                    logger.info("Creating page for %s - %s", stop_name, dest)
                     pages[line][k] = create_page(
                         selected_routes[line].route_short_name,
                         dest,
@@ -421,7 +421,7 @@ async def compute(
                         tmpfile,
                     )
                     if args.map:
-                        logger.info("Drawing map for %s", stop_name)
+                        logger.info("Drawing map for %s - %s", stop_name, dest)
                         mappage = tempfile.mkstemp(suffix=".pdf", dir=tmpdir)[1]
                         linedrawinfo = await utils.prepare_linedraw_info(stop_times, ourtrips, stops, line, k, stopids)
                         pages[line][k + "map"] = await draw_map(
