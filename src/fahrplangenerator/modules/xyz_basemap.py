@@ -106,11 +106,13 @@ async def _load_or_fetch_tile(cache: TileCache, provider: TileProvider, z: int, 
     key = (provider.name, z, x, y)
 
     if key in _TILE_MEM_CACHE:
+        logger.info("Got Tile in cache", extra={"provider": provider.get("name"), "tile": {"x": x, "y": y, "zoom": z}})
         return key, _TILE_MEM_CACHE[key], 200
 
     tile = await cache.load(provider, z, x, y)
     if tile is not None:
         _TILE_MEM_CACHE[key] = tile
+        logger.info("Got Tile in cache", extra={"provider": provider.get("name"), "tile": {"x": x, "y": y, "zoom": z}})
         return key, tile, 200
 
     tile, status = await fetch_tile_with_retry(provider, z, x, y, retries=retries, size=size)
